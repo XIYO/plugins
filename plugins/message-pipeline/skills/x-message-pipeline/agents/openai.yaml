@@ -1,0 +1,4 @@
+interface:
+  display_name: "Message Pipeline"
+  short_description: "카카오톡·iMessage를 토큰 절약형 CCT로 처리"
+  default_prompt: "Use $x-message-pipeline to benchmark and export local chats as per-thread compact context."

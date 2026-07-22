@@ -1,0 +1,16 @@
+{
+  "name": "message-pipeline",
+  "owner": {
+    "name": "XIYO"
+  },
+  "metadata": {
+    "description": "XIYO local message processing plugins"
+  },
+  "plugins": [
+    {
+      "name": "message-pipeline",
+      "source": "./plugins/message-pipeline",
+      "description": "KakaoTalk·iMessage 기록을 읽기 전용으로 추출하고 토큰 절약형 CCT로 내보낸다."
+    }
+  ]
+}

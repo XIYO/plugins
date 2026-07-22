@@ -1,0 +1,11 @@
+{
+  "name": "message-pipeline",
+  "version": "0.1.0",
+  "description": "KakaoTalk·iMessage 읽기 전용 추출, CCT 최적화, 토큰 벤치마크와 스레드별 분석 준비",
+  "author": {
+    "name": "XIYO",
+    "email": "bunny@xiyo.dev"
+  },
+  "license": "MIT",
+  "keywords": ["kakaotalk", "imessage", "messages", "cct", "token-optimization"]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "message-pipeline",
+  "version": "0.1.0+codex.20260722074626",
+  "description": "Read-only KakaoTalk and iMessage extraction, compact CCT export, token benchmarking, and per-thread context workflows.",
+  "author": {
+    "name": "XIYO",
+    "email": "bunny@xiyo.dev",
+    "url": "https://github.com/XIYO"
+  },
+  "license": "MIT",
+  "keywords": [
+    "kakaotalk",
+    "imessage",
+    "messages",
+    "cct",
+    "token-optimization"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Message Pipeline",
+    "shortDescription": "KakaoTalk\u00b7iMessage\ub97c \ud1a0\ud070 \uc808\uc57d\ud615 CCT\ub85c \ucc98\ub9ac",
+    "longDescription": "\ub85c\uceec KakaoTalk\uc640 iMessage \uae30\ub85d\uc744 \uc77d\uae30 \uc804\uc6a9\uc73c\ub85c \ucd94\ucd9c\ud558\uace0, \uacf5\ud1b5 \uc635\ud2f0\ub9c8\uc774\uc800\uc640 \uc548\uc815 \ubcc4\uce6d\uc744 \uac70\uccd0 \uc2a4\ub808\ub4dc\ubcc4 CCT\ub85c \ub0b4\ubcf4\ub0c5\ub2c8\ub2e4.",
+    "developerName": "XIYO",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Analyze"
+    ],
+    "defaultPrompt": [
+      "\uc774\ubc88 \ub2ec\uacfc \uc800\ubc88 \ub2ec \uba54\uc2dc\uc9c0\uc758 \ud1a0\ud070 \ube44\uc6a9\ub9cc \uba3c\uc800 \uce21\uc815\ud574\uc918.",
+      "\uc120\ud0dd\ud55c \ucc44\ud305\uc744 \uc774\ub984 \ub300\uc2e0 \ubcc4\uce6d\uc744 \uc368\uc11c CCT\ub85c \ub0b4\ubcf4\ub0b4\uc918.",
+      "\uc2a4\ub808\ub4dc\ubcc4 \ubd84\uc11d \ub9e5\ub77d\uc744 \uc720\uc9c0\ud558\uba74\uc11c \uc77c\uc815 \ud6c4\ubcf4\ub97c \ucc3e\uc544\uc918."
+    ]
+  }
+}
