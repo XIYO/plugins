@@ -14,16 +14,19 @@ use serde::Serialize;
 use tracing::{error, info};
 
 use crate::{
-    model::{AliasedMessage, SourceKind},
-    optimizer::{MessageAudit, OptimizationOutcome},
+    archive::{self, ArchiveQuery, ArchiveSyncReport, ThreadArchiveStatus},
+    model::{AliasedMessage, NormalizedMessage, SourceKind},
+    optimizer::{MessageAudit, OptimizationOutcome, OptimizationProfile, optimize},
+    time_range::DateRange,
 };
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContextScope {
     Global,
     Thread(String),
+    Session(String),
 }
 
 impl ContextScope {
@@ -31,6 +34,7 @@ impl ContextScope {
         match self {
             Self::Global => ("global", "global"),
             Self::Thread(alias) => ("thread", alias),
+            Self::Session(alias) => ("session", alias),
         }
     }
 }
@@ -44,6 +48,11 @@ pub struct AnalysisContextMetadata {
     pub period_end_utc: String,
     pub model: String,
     pub reasoning_effort: String,
+    pub message_count: Option<i64>,
+    pub message_set_sha256: Option<String>,
+    pub input_context_count: Option<i64>,
+    pub input_context_max_id: Option<i64>,
+    pub rolled_up_by_context_id: Option<i64>,
     pub created_at_utc: String,
 }
 
@@ -51,6 +60,16 @@ pub struct AnalysisContextMetadata {
 pub struct AnalysisContext {
     pub metadata: AnalysisContextMetadata,
     pub summary: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AnalysisContextDraft<'a> {
+    pub period_start: DateTime<Utc>,
+    pub period_end: DateTime<Utc>,
+    pub model: &'a str,
+    pub reasoning_effort: &'a str,
+    pub summary: &'a str,
+    pub input_context_max_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -158,15 +177,121 @@ impl StateStore {
         Ok(aliased)
     }
 
+    pub fn archive_messages(
+        &mut self,
+        source: SourceKind,
+        range: DateRange,
+        messages: &[NormalizedMessage],
+    ) -> Result<ArchiveSyncReport> {
+        info!(
+            source = %source,
+            row_count = messages.len(),
+            "[state:archive:start] storing normalized source messages"
+        );
+        let started = Instant::now();
+        let exact = optimize(messages, OptimizationProfile::Exact)?;
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .context("unable to start archive transaction")?;
+        if let Err(error_value) = register_transaction(&transaction, &exact) {
+            error!(
+                error = ?error_value,
+                "[state:archive:failure] identity registration failed"
+            );
+            return Err(error_value);
+        }
+        let report = match archive::ingest(&transaction, source, range, messages) {
+            Ok(report) => report,
+            Err(error_value) => {
+                error!(
+                    error = ?error_value,
+                    "[state:archive:failure] message archive ingestion failed"
+                );
+                return Err(error_value);
+            }
+        };
+        transaction
+            .commit()
+            .context("unable to commit archive transaction")?;
+        if let Some(path) = &self.path {
+            enforce_file_mode(path)?;
+        }
+        info!(
+            source = %source,
+            inserted_count = report.inserted_messages,
+            updated_count = report.updated_messages,
+            unchanged_count = report.unchanged_messages,
+            duration_ms = started.elapsed().as_millis(),
+            "[state:archive:success] normalized source messages stored"
+        );
+        Ok(report)
+    }
+
+    pub fn load_archived_messages(&self, query: &ArchiveQuery) -> Result<Vec<NormalizedMessage>> {
+        info!(
+            source = %query.source,
+            pending_only = query.pending_only,
+            "[state:archive:start] loading archived messages"
+        );
+        let started = Instant::now();
+        let messages = archive::load(&self.connection, query)?;
+        info!(
+            source = %query.source,
+            row_count = messages.len(),
+            duration_ms = started.elapsed().as_millis(),
+            "[state:archive:success] archived messages loaded"
+        );
+        Ok(messages)
+    }
+
+    pub fn mark_presented(&mut self, messages: &[NormalizedMessage]) -> Result<()> {
+        info!(
+            row_count = messages.len(),
+            "[state:archive:start] recording transcript presentation"
+        );
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        archive::mark_presented(&transaction, messages)?;
+        transaction.commit()?;
+        if let Some(path) = &self.path {
+            enforce_file_mode(path)?;
+        }
+        info!(
+            row_count = messages.len(),
+            "[state:archive:success] transcript presentation recorded"
+        );
+        Ok(())
+    }
+
+    pub fn archive_status(
+        &self,
+        source: Option<SourceKind>,
+        thread_alias: Option<&str>,
+    ) -> Result<Vec<ThreadArchiveStatus>> {
+        info!("[state:archive:start] loading archive status");
+        let records = archive::status(&self.connection, source, thread_alias)?;
+        info!(
+            row_count = records.len(),
+            "[state:archive:success] archive status loaded"
+        );
+        Ok(records)
+    }
+
     pub fn save_analysis_context(
         &mut self,
         scope: &ContextScope,
-        period_start: DateTime<Utc>,
-        period_end: DateTime<Utc>,
-        model: &str,
-        reasoning_effort: &str,
-        summary: &str,
+        draft: AnalysisContextDraft<'_>,
     ) -> Result<i64> {
+        let AnalysisContextDraft {
+            period_start,
+            period_end,
+            model,
+            reasoning_effort,
+            summary,
+            input_context_max_id,
+        } = draft;
         if period_start >= period_end {
             bail!("analysis context start must be earlier than end")
         }
@@ -185,7 +310,7 @@ impl StateStore {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if matches!(scope, ContextScope::Thread(_)) {
+        if !matches!(scope, ContextScope::Global) {
             let thread_exists: bool = transaction.query_row(
                 "SELECT EXISTS(SELECT 1 FROM source_thread WHERE alias = ?1)",
                 [scope_key],
@@ -195,11 +320,35 @@ impl StateStore {
                 bail!("thread alias does not exist in local state")
             }
         }
+        let coverage = match scope {
+            ContextScope::Session(_) => {
+                if input_context_max_id.is_some() {
+                    bail!("--through-context-id is not valid for session context")
+                }
+                Some(archive::pending_coverage(
+                    &transaction,
+                    scope_key,
+                    period_start,
+                    period_end,
+                )?)
+            }
+            ContextScope::Global | ContextScope::Thread(_) => None,
+        };
+        let rollup_input_ids = match scope {
+            ContextScope::Session(_) => Vec::new(),
+            ContextScope::Global | ContextScope::Thread(_) => {
+                let through = input_context_max_id
+                    .context("--through-context-id is required for thread and global rollups")?;
+                pending_rollup_input_ids(&transaction, scope, through)?
+            }
+        };
+        let created_at = Utc::now().to_rfc3339();
         transaction.execute(
             "INSERT INTO analysis_context\n\
              (scope, scope_key, period_start_utc, period_end_utc, model, reasoning_effort,\n\
-              summary, created_at_utc)\n\
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+              summary, message_count, message_set_sha256, input_context_count,\n\
+              input_context_max_id, created_at_utc)\n\
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 scope_name,
                 scope_key,
@@ -208,10 +357,39 @@ impl StateStore {
                 model,
                 reasoning_effort,
                 summary,
-                Utc::now().to_rfc3339(),
+                coverage.as_ref().map(|value| value.message_count),
+                coverage
+                    .as_ref()
+                    .map(|value| value.message_set_sha256.as_str()),
+                (!rollup_input_ids.is_empty()).then_some(rollup_input_ids.len() as i64),
+                input_context_max_id,
+                created_at,
             ],
         )?;
         let id = transaction.last_insert_rowid();
+        if let Some(coverage) = coverage {
+            let marked = archive::mark_analyzed(
+                &transaction,
+                scope_key,
+                period_start,
+                period_end,
+                id,
+                &created_at,
+            )?;
+            if marked as i64 != coverage.message_count {
+                bail!("analysis coverage changed before the summary could be committed")
+            }
+        }
+        for input_id in rollup_input_ids {
+            let changed = transaction.execute(
+                "UPDATE analysis_context SET rolled_up_by_context_id = ?1\n\
+                 WHERE id = ?2 AND rolled_up_by_context_id IS NULL",
+                params![id, input_id],
+            )?;
+            if changed != 1 {
+                bail!("rollup input changed before the summary could be committed")
+            }
+        }
         transaction.commit()?;
         if let Some(path) = &self.path {
             enforce_file_mode(path)?;
@@ -233,7 +411,8 @@ impl StateStore {
             .connection
             .query_row(
                 "SELECT id, scope, scope_key, period_start_utc, period_end_utc, model,\n\
-                        reasoning_effort, created_at_utc, summary\n\
+                        reasoning_effort, message_count, message_set_sha256, input_context_count,\n\
+                        input_context_max_id, rolled_up_by_context_id, created_at_utc, summary\n\
                  FROM analysis_context\n\
                  WHERE scope = ?1 AND scope_key = ?2\n\
                  ORDER BY id DESC LIMIT 1",
@@ -248,9 +427,14 @@ impl StateStore {
                             period_end_utc: row.get(4)?,
                             model: row.get(5)?,
                             reasoning_effort: row.get(6)?,
-                            created_at_utc: row.get(7)?,
+                            message_count: row.get(7)?,
+                            message_set_sha256: row.get(8)?,
+                            input_context_count: row.get(9)?,
+                            input_context_max_id: row.get(10)?,
+                            rolled_up_by_context_id: row.get(11)?,
+                            created_at_utc: row.get(12)?,
                         },
-                        summary: row.get(8)?,
+                        summary: row.get(13)?,
                     })
                 },
             )
@@ -267,7 +451,8 @@ impl StateStore {
         info!("[state:context:start] listing derived analysis context metadata");
         let mut statement = self.connection.prepare(
             "SELECT id, scope, scope_key, period_start_utc, period_end_utc, model,\n\
-                    reasoning_effort, created_at_utc\n\
+                    reasoning_effort, message_count, message_set_sha256, input_context_count,\n\
+                    input_context_max_id, rolled_up_by_context_id, created_at_utc\n\
              FROM analysis_context ORDER BY id ASC",
         )?;
         let records = statement
@@ -280,7 +465,12 @@ impl StateStore {
                     period_end_utc: row.get(4)?,
                     model: row.get(5)?,
                     reasoning_effort: row.get(6)?,
-                    created_at_utc: row.get(7)?,
+                    message_count: row.get(7)?,
+                    message_set_sha256: row.get(8)?,
+                    input_context_count: row.get(9)?,
+                    input_context_max_id: row.get(10)?,
+                    rolled_up_by_context_id: row.get(11)?,
+                    created_at_utc: row.get(12)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -289,6 +479,22 @@ impl StateStore {
             "[state:context:success] derived analysis context metadata listed"
         );
         Ok(records)
+    }
+
+    pub fn pending_rollup_contexts(&self, scope: &ContextScope) -> Result<Vec<AnalysisContext>> {
+        info!("[state:context:start] loading pending rollup inputs");
+        let contexts = match scope {
+            ContextScope::Thread(alias) => {
+                load_pending_rollup_contexts(&self.connection, "session", Some(alias.as_str()))?
+            }
+            ContextScope::Global => load_pending_rollup_contexts(&self.connection, "thread", None)?,
+            ContextScope::Session(_) => bail!("session context cannot consume rollup inputs"),
+        };
+        info!(
+            row_count = contexts.len(),
+            "[state:context:success] pending rollup inputs loaded"
+        );
+        Ok(contexts)
     }
 
     pub fn identity_map(&self, thread_alias: &str) -> Result<ThreadIdentityMap> {
@@ -410,6 +616,77 @@ impl StateStore {
             )?;
             transaction.commit()?;
         }
+        let version: i64 = self
+            .connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version == 2 {
+            let transaction = self.connection.transaction()?;
+            transaction.execute_batch(
+                "DROP INDEX analysis_context_scope_latest;\n\
+                 ALTER TABLE analysis_context RENAME TO analysis_context_v2;\n\
+                 CREATE TABLE analysis_context (\n\
+                     id INTEGER PRIMARY KEY,\n\
+                     scope TEXT NOT NULL CHECK(scope IN ('global', 'thread', 'session')),\n\
+                     scope_key TEXT NOT NULL,\n\
+                     period_start_utc TEXT NOT NULL,\n\
+                     period_end_utc TEXT NOT NULL,\n\
+                     model TEXT NOT NULL,\n\
+                     reasoning_effort TEXT NOT NULL,\n\
+                     summary TEXT NOT NULL,\n\
+                     message_count INTEGER,\n\
+                     message_set_sha256 TEXT,\n\
+                     input_context_count INTEGER,\n\
+                     input_context_max_id INTEGER,\n\
+                     rolled_up_by_context_id INTEGER REFERENCES analysis_context(id) ON DELETE SET NULL,\n\
+                     created_at_utc TEXT NOT NULL\n\
+                 );\n\
+                 INSERT INTO analysis_context\n\
+                     (id, scope, scope_key, period_start_utc, period_end_utc, model,\n\
+                      reasoning_effort, summary, created_at_utc)\n\
+                 SELECT id, scope, scope_key, period_start_utc, period_end_utc, model,\n\
+                        reasoning_effort, summary, created_at_utc\n\
+                 FROM analysis_context_v2;\n\
+                 DROP TABLE analysis_context_v2;\n\
+                 CREATE INDEX analysis_context_scope_latest\n\
+                     ON analysis_context(scope, scope_key, id DESC);\n\
+                 CREATE INDEX analysis_context_pending_rollup\n\
+                     ON analysis_context(scope, scope_key, rolled_up_by_context_id, id);\n\
+                 CREATE TABLE archived_message (\n\
+                     id INTEGER PRIMARY KEY,\n\
+                     source TEXT NOT NULL,\n\
+                     source_message_id TEXT NOT NULL,\n\
+                     thread_id INTEGER NOT NULL REFERENCES source_thread(id) ON DELETE CASCADE,\n\
+                     speaker_id INTEGER NOT NULL REFERENCES speaker(id) ON DELETE CASCADE,\n\
+                     timestamp_utc TEXT NOT NULL,\n\
+                     kind TEXT NOT NULL,\n\
+                     content TEXT NOT NULL,\n\
+                     attachments_json TEXT NOT NULL,\n\
+                     content_sha256 TEXT NOT NULL,\n\
+                     first_ingested_at_utc TEXT NOT NULL,\n\
+                     last_ingested_at_utc TEXT NOT NULL,\n\
+                     last_presented_at_utc TEXT,\n\
+                     analyzed_at_utc TEXT,\n\
+                     analysis_context_id INTEGER REFERENCES analysis_context(id) ON DELETE SET NULL,\n\
+                     UNIQUE(source, source_message_id)\n\
+                 );\n\
+                 CREATE INDEX archived_message_thread_pending_time\n\
+                     ON archived_message(thread_id, analysis_context_id, timestamp_utc, source_message_id);\n\
+                 CREATE TABLE source_sync (\n\
+                     id INTEGER PRIMARY KEY,\n\
+                     source TEXT NOT NULL,\n\
+                     period_start_utc TEXT NOT NULL,\n\
+                     period_end_utc TEXT NOT NULL,\n\
+                     extracted_messages INTEGER NOT NULL,\n\
+                     inserted_messages INTEGER NOT NULL,\n\
+                     updated_messages INTEGER NOT NULL,\n\
+                     unchanged_messages INTEGER NOT NULL,\n\
+                     completed_at_utc TEXT NOT NULL\n\
+                 );\n\
+                 CREATE INDEX source_sync_latest ON source_sync(source, id DESC);\n\
+                 PRAGMA user_version = 3;",
+            )?;
+            transaction.commit()?;
+        }
         let final_version: i64 = self
             .connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -422,6 +699,88 @@ impl StateStore {
 
 type ThreadKey = (SourceKind, String);
 type SpeakerKey = (SourceKind, String, String);
+
+fn pending_rollup_input_ids(
+    transaction: &Transaction<'_>,
+    scope: &ContextScope,
+    through_context_id: i64,
+) -> Result<Vec<i64>> {
+    if through_context_id <= 0 {
+        bail!("--through-context-id must be greater than zero")
+    }
+    let ids = match scope {
+        ContextScope::Thread(alias) => {
+            let mut statement = transaction.prepare(
+                "SELECT id FROM analysis_context\n\
+                 WHERE scope = 'session' AND scope_key = ?1\n\
+                   AND rolled_up_by_context_id IS NULL AND id <= ?2\n\
+                 ORDER BY id ASC",
+            )?;
+            statement
+                .query_map(params![alias, through_context_id], |row| row.get(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        }
+        ContextScope::Global => {
+            let mut statement = transaction.prepare(
+                "SELECT id FROM analysis_context\n\
+                 WHERE scope = 'thread' AND rolled_up_by_context_id IS NULL AND id <= ?1\n\
+                 ORDER BY id ASC",
+            )?;
+            statement
+                .query_map([through_context_id], |row| row.get(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        }
+        ContextScope::Session(_) => bail!("session context cannot consume rollup inputs"),
+    };
+    if ids.last().copied() != Some(through_context_id) {
+        bail!("rollup input watermark is stale or invalid; reload context inputs")
+    }
+    Ok(ids)
+}
+
+fn load_pending_rollup_contexts(
+    connection: &Connection,
+    input_scope: &str,
+    scope_key: Option<&str>,
+) -> Result<Vec<AnalysisContext>> {
+    let mut statement = connection.prepare(
+        "SELECT id, scope, scope_key, period_start_utc, period_end_utc, model,\n\
+                reasoning_effort, message_count, message_set_sha256, input_context_count,\n\
+                input_context_max_id, rolled_up_by_context_id, created_at_utc, summary\n\
+         FROM analysis_context\n\
+         WHERE scope = ?1 AND (?2 IS NULL OR scope_key = ?2)\n\
+           AND rolled_up_by_context_id IS NULL\n\
+           AND (?1 != 'thread' OR id = (\n\
+               SELECT MAX(newer.id) FROM analysis_context newer\n\
+               WHERE newer.scope = 'thread'\n\
+                 AND newer.scope_key = analysis_context.scope_key\n\
+                 AND newer.rolled_up_by_context_id IS NULL\n\
+           ))\n\
+         ORDER BY id ASC",
+    )?;
+    Ok(statement
+        .query_map(params![input_scope, scope_key], |row| {
+            Ok(AnalysisContext {
+                metadata: AnalysisContextMetadata {
+                    id: row.get(0)?,
+                    scope: row.get(1)?,
+                    scope_key: row.get(2)?,
+                    period_start_utc: row.get(3)?,
+                    period_end_utc: row.get(4)?,
+                    model: row.get(5)?,
+                    reasoning_effort: row.get(6)?,
+                    message_count: row.get(7)?,
+                    message_set_sha256: row.get(8)?,
+                    input_context_count: row.get(9)?,
+                    input_context_max_id: row.get(10)?,
+                    rolled_up_by_context_id: row.get(11)?,
+                    created_at_utc: row.get(12)?,
+                },
+                summary: row.get(13)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?)
+}
 
 fn register_transaction(
     transaction: &Transaction<'_>,
@@ -703,11 +1062,36 @@ mod tests {
     use chrono::{TimeZone, Utc};
     use tempfile::tempdir;
 
-    use super::{StateStore, alphabetic_alias};
+    use super::{AnalysisContextDraft, StateStore, alphabetic_alias};
     use crate::{
+        archive::ArchiveQuery,
         model::{MessageKind, NormalizedMessage, SourceKind},
         optimizer::{OptimizationProfile, optimize},
+        time_range::DateRange,
     };
+
+    fn range() -> DateRange {
+        DateRange::new(
+            Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap(),
+            Utc.with_ymd_and_hms(2026, 7, 2, 0, 0, 0).unwrap(),
+        )
+        .unwrap()
+    }
+
+    fn context_draft<'a>(
+        start: chrono::DateTime<Utc>,
+        end: chrono::DateTime<Utc>,
+        summary: &'a str,
+    ) -> AnalysisContextDraft<'a> {
+        AnalysisContextDraft {
+            period_start: start,
+            period_end: end,
+            model: "gpt-5.6-terra",
+            reasoning_effort: "medium",
+            summary,
+            input_context_max_id: None,
+        }
+    }
 
     fn messages() -> Vec<NormalizedMessage> {
         vec![
@@ -764,9 +1148,10 @@ mod tests {
     fn state_path_is_owner_only() {
         let directory = tempdir().unwrap();
         let path = directory.path().join("private").join("state.sqlite3");
-        let outcome = optimize(&messages(), OptimizationProfile::Schedule).unwrap();
         let mut state = StateStore::open(&path).unwrap();
-        state.register(&outcome).unwrap();
+        state
+            .archive_messages(SourceKind::KakaoTalk, range(), &messages())
+            .unwrap();
         assert_eq!(
             std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o600
@@ -779,17 +1164,92 @@ mod tests {
                 & 0o777,
             0o700
         );
-        let database_bytes = std::fs::read(&path).unwrap();
-        assert!(
-            !database_bytes
-                .windows(b"hello".len())
-                .any(|value| value == b"hello")
+        let archived = state
+            .load_archived_messages(&ArchiveQuery {
+                source: SourceKind::KakaoTalk,
+                range: range(),
+                thread_alias: None,
+                pending_only: false,
+            })
+            .unwrap();
+        assert_eq!(
+            archived
+                .iter()
+                .map(|message| message.content.as_str())
+                .collect::<Vec<_>>(),
+            ["hello", "hi"]
         );
-        assert!(
-            !database_bytes
-                .windows(b"hi".len())
-                .any(|value| value == b"hi")
-        );
+    }
+
+    #[test]
+    fn migrates_v2_contexts_and_accepts_session_scope() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("state.sqlite3");
+        {
+            let state = StateStore::open(&path).unwrap();
+            state
+                .connection
+                .execute_batch(
+                    "DROP TABLE source_sync;
+                     DROP TABLE archived_message;
+                     DROP INDEX analysis_context_scope_latest;
+                     DROP TABLE analysis_context;
+                     CREATE TABLE analysis_context (
+                         id INTEGER PRIMARY KEY,
+                         scope TEXT NOT NULL CHECK(scope IN ('global', 'thread')),
+                         scope_key TEXT NOT NULL,
+                         period_start_utc TEXT NOT NULL,
+                         period_end_utc TEXT NOT NULL,
+                         model TEXT NOT NULL,
+                         reasoning_effort TEXT NOT NULL,
+                         summary TEXT NOT NULL,
+                         created_at_utc TEXT NOT NULL
+                     );
+                     CREATE INDEX analysis_context_scope_latest
+                         ON analysis_context(scope, scope_key, id DESC);
+                     INSERT INTO analysis_context
+                         (scope, scope_key, period_start_utc, period_end_utc, model,
+                          reasoning_effort, summary, created_at_utc)
+                     VALUES
+                         ('global', 'global', '2026-06-01T00:00:00+00:00',
+                          '2026-07-01T00:00:00+00:00', 'gpt-5.6-terra', 'medium',
+                          'existing global rollup', '2026-07-01T00:00:00+00:00');
+                     PRAGMA user_version = 2;",
+                )
+                .unwrap();
+        }
+
+        let mut state = StateStore::open(&path).unwrap();
+        let version: i64 = state
+            .connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 3);
+        let context = state
+            .latest_analysis_context(&super::ContextScope::Global)
+            .unwrap()
+            .unwrap();
+        assert_eq!(context.summary, "existing global rollup");
+        assert_eq!(context.metadata.message_count, None);
+
+        state
+            .archive_messages(SourceKind::KakaoTalk, range(), &messages())
+            .unwrap();
+        let query = ArchiveQuery {
+            source: SourceKind::KakaoTalk,
+            range: range(),
+            thread_alias: Some("K001".to_string()),
+            pending_only: true,
+        };
+        let pending = state.load_archived_messages(&query).unwrap();
+        state.mark_presented(&pending).unwrap();
+        state
+            .save_analysis_context(
+                &super::ContextScope::Session("K001".to_string()),
+                context_draft(range().start, range().end, "migrated session summary"),
+            )
+            .unwrap();
+        assert!(state.load_archived_messages(&query).unwrap().is_empty());
     }
 
     #[test]
@@ -801,50 +1261,181 @@ mod tests {
     }
 
     #[test]
-    fn derived_context_is_append_only_and_scoped_by_alias() {
-        let outcome = optimize(&messages(), OptimizationProfile::Schedule).unwrap();
+    fn session_context_tracks_coverage_and_thread_context_is_a_rollup() {
         let mut state = StateStore::open_in_memory().unwrap();
-        state.register(&outcome).unwrap();
+        state
+            .archive_messages(SourceKind::KakaoTalk, range(), &messages())
+            .unwrap();
+        let query = ArchiveQuery {
+            source: SourceKind::KakaoTalk,
+            range: range(),
+            thread_alias: Some("K001".to_string()),
+            pending_only: true,
+        };
+        let pending = state.load_archived_messages(&query).unwrap();
+        state.mark_presented(&pending).unwrap();
         let start = Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap();
         let end = Utc.with_ymd_and_hms(2026, 7, 2, 0, 0, 0).unwrap();
-        state
+        let first_session_id = state
             .save_analysis_context(
-                &super::ContextScope::Thread("K001".to_string()),
-                start,
-                end,
-                "gpt-5.6-terra",
-                "medium",
-                "first derived summary",
+                &super::ContextScope::Session("K001".to_string()),
+                context_draft(start, end, "first derived summary"),
             )
             .unwrap();
+        let inputs = state
+            .pending_rollup_contexts(&super::ContextScope::Thread("K001".to_string()))
+            .unwrap();
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0].metadata.id, first_session_id);
+        assert!(
+            state
+                .save_analysis_context(
+                    &super::ContextScope::Session("K001".to_string()),
+                    context_draft(start, end, "duplicate summary"),
+                )
+                .is_err()
+        );
+        let mut changed = messages();
+        changed[1].content = "updated original".to_string();
+        let report = state
+            .archive_messages(SourceKind::KakaoTalk, range(), &changed)
+            .unwrap();
+        assert_eq!(report.updated_messages, 1);
+        assert_eq!(report.unchanged_messages, 1);
+        let pending = state.load_archived_messages(&query).unwrap();
+        state.mark_presented(&pending).unwrap();
         state
             .save_analysis_context(
                 &super::ContextScope::Thread("K001".to_string()),
-                start,
-                end,
-                "gpt-5.6-terra",
-                "medium",
-                "second derived summary",
+                AnalysisContextDraft {
+                    input_context_max_id: Some(first_session_id),
+                    ..context_draft(start, end, "first cumulative thread rollup")
+                },
+            )
+            .unwrap();
+        assert_eq!(state.load_archived_messages(&query).unwrap().len(), 1);
+        let second_session_id = state
+            .save_analysis_context(
+                &super::ContextScope::Session("K001".to_string()),
+                context_draft(start, end, "second derived summary"),
+            )
+            .unwrap();
+        let latest = state
+            .latest_analysis_context(&super::ContextScope::Session("K001".to_string()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(latest.summary, "second derived summary");
+        let inputs = state
+            .pending_rollup_contexts(&super::ContextScope::Thread("K001".to_string()))
+            .unwrap();
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0].metadata.id, second_session_id);
+        let second_thread_id = state
+            .save_analysis_context(
+                &super::ContextScope::Thread("K001".to_string()),
+                AnalysisContextDraft {
+                    input_context_max_id: Some(second_session_id),
+                    ..context_draft(start, end, "cumulative thread rollup")
+                },
             )
             .unwrap();
         let latest = state
             .latest_analysis_context(&super::ContextScope::Thread("K001".to_string()))
             .unwrap()
             .unwrap();
-        assert_eq!(latest.summary, "second derived summary");
-        assert_eq!(state.list_analysis_contexts().unwrap().len(), 2);
+        assert_eq!(latest.summary, "cumulative thread rollup");
+        assert_eq!(latest.metadata.message_count, None);
+        assert_eq!(latest.metadata.input_context_count, Some(1));
+        assert_eq!(
+            latest.metadata.input_context_max_id,
+            Some(second_session_id)
+        );
+        assert!(
+            state
+                .pending_rollup_contexts(&super::ContextScope::Thread("K001".to_string()))
+                .unwrap()
+                .is_empty()
+        );
+        let global_inputs = state
+            .pending_rollup_contexts(&super::ContextScope::Global)
+            .unwrap();
+        assert_eq!(global_inputs.len(), 1);
+        assert_eq!(global_inputs[0].metadata.id, second_thread_id);
+        state
+            .save_analysis_context(
+                &super::ContextScope::Global,
+                AnalysisContextDraft {
+                    input_context_max_id: Some(second_thread_id),
+                    ..context_draft(start, end, "cumulative global rollup")
+                },
+            )
+            .unwrap();
+        let global = state
+            .latest_analysis_context(&super::ContextScope::Global)
+            .unwrap()
+            .unwrap();
+        assert_eq!(global.metadata.input_context_count, Some(2));
+        assert_eq!(global.metadata.input_context_max_id, Some(second_thread_id));
+        assert!(
+            state
+                .pending_rollup_contexts(&super::ContextScope::Global)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(state.list_analysis_contexts().unwrap().len(), 5);
         assert!(
             state
                 .save_analysis_context(
                     &super::ContextScope::Thread("K999".to_string()),
-                    start,
-                    end,
-                    "gpt-5.6-terra",
-                    "medium",
-                    "unknown thread",
+                    AnalysisContextDraft {
+                        input_context_max_id: Some(second_session_id),
+                        ..context_draft(start, end, "unknown thread")
+                    },
                 )
                 .is_err()
         );
+    }
+
+    #[test]
+    fn archive_is_idempotent_and_tracks_presentation_and_analysis() {
+        let mut state = StateStore::open_in_memory().unwrap();
+        let first = state
+            .archive_messages(SourceKind::KakaoTalk, range(), &messages())
+            .unwrap();
+        assert_eq!(first.inserted_messages, 2);
+        let second = state
+            .archive_messages(SourceKind::KakaoTalk, range(), &messages())
+            .unwrap();
+        assert_eq!(second.unchanged_messages, 2);
+
+        let query = ArchiveQuery {
+            source: SourceKind::KakaoTalk,
+            range: range(),
+            thread_alias: Some("K001".to_string()),
+            pending_only: true,
+        };
+        let pending = state.load_archived_messages(&query).unwrap();
+        assert_eq!(pending.len(), 2);
+        state.mark_presented(&pending).unwrap();
+        let status = state
+            .archive_status(Some(SourceKind::KakaoTalk), Some("K001"))
+            .unwrap();
+        assert_eq!(status[0].archived_messages, 2);
+        assert_eq!(status[0].pending_messages, 2);
+        assert!(status[0].last_presented_at_utc.is_some());
+
+        state
+            .save_analysis_context(
+                &super::ContextScope::Session("K001".to_string()),
+                context_draft(range().start, range().end, "session summary"),
+            )
+            .unwrap();
+        assert!(state.load_archived_messages(&query).unwrap().is_empty());
+        let status = state
+            .archive_status(Some(SourceKind::KakaoTalk), Some("K001"))
+            .unwrap();
+        assert_eq!(status[0].pending_messages, 0);
+        assert!(status[0].last_analyzed_at_utc.is_some());
     }
 
     #[test]

@@ -8,72 +8,79 @@ owner: maintainer
 
 ## 요구사항 범위
 
-`FR-PIPE-EXTRACT-001`, `FR-PIPE-NORM-001`, `FR-PIPE-OPT-001`~`003`, `FR-PIPE-ALIAS-001`~`002`, `FR-PIPE-EXPORT-001`, `FR-PIPE-BENCH-001`~`002`, `FR-PIPE-CONTEXT-001`을 구현한다.
+읽기 전용 소스 동기화, 원문 보관, 공통 최적화, 별칭, CCT/토큰 집계, pending 조회와 세션 요약 커밋을 구현한다.
 
 ## 구성요소
 
-- `extract::kakao`: epoch 범위를 값으로만 삽입한 고정 CTE/SELECT를 `kakaocli query`에 전달한다.
-- `extract::imessage`: `imsg chats`로 기간 후보를 찾고 각 chat에 `history --start --end --attachments --json`을 실행한다.
-- 각 `extract` adapter: 앱 고유 JSON, 메시지 type, 첨부 키와 강한 관계 신호를 공통 구조로 만든다. 일반 메타 필드 존재만으로 첨부·답장을 추론하지 않는다.
-- `optimizer::replacer`: NFC, 채팅 반응, 무의미 기호, 반복, URL과 첨부 표식을 메시지 단위 순수 함수로 변환한다.
-- `optimizer::structure`: 정규화된 메시지 사이의 연속 중복과 향후 답장/템플릿 관계를 판단한다. 앱 이름이나 원본 JSON 키를 참조하지 않는다.
-- `export`: 세션화와 시각·화자 상속처럼 선택 출력 형식에만 필요한 압축을 수행한다.
-- `state`: 별칭 할당과 원문 없는 메시지 인덱스를 단일 SQLite 트랜잭션에 기록한다.
-- `export`: 별칭이 적용된 메시지를 CCT/TSV/JSON으로 렌더링한다.
-- `benchmark`: 같은 결과를 `o200k_base`로 세고 분포만 직렬화한다.
+- `extract::kakao`: epoch 범위를 넣은 고정 CTE/SELECT만 `kakaocli query`에 전달한다.
+- `extract::imessage`: `imsg chats`와 각 chat의 `history --start --end --attachments --json`만 실행한다.
+- `archive`: 최적화 전 `NormalizedMessage`를 멱등 upsert하고 변경된 메시지를 pending으로 되돌린다.
+- `optimizer::replacer`: NFC, 채팅 반응, 무의미 기호, 반복, URL과 첨부 표식을 순수 함수로 변환한다.
+- `optimizer::structure`: 정규화된 메시지 사이의 연속 중복을 판단한다.
+- `state`: 원문 아카이브, 별칭, 변환 감사, 제시·분석 상태와 append-only 요약을 트랜잭션으로 조정한다.
+- `export`: 세션화와 시각·화자 상속을 적용해 CCT/TSV/JSON으로 렌더링한다.
+- `benchmark`: 아카이브에서 같은 범위를 불러와 `o200k_base` 분포만 직렬화한다.
 
 ## 데이터 모델
 
 | 엔터티 | 핵심 필드 | 비고 |
 |---|---|---|
-| `NormalizedMessage` | source, message_id, thread, author, timestamp_utc, kind, content, attachments | 메모리 전용 원문 |
-| `OptimizedMessage` | normalized metadata, rendered_content, transforms | 내보내기 직전 메모리 전용 |
-| `threads` | source, source_thread_id, display_name, alias | 로컬 보호 DB |
-| `speakers` | thread_id, source_author_id, display_name, alias, is_self | 자기 자신은 A |
-| `message_audit` | source_message_id, timestamp_utc, content_sha256, action_codes | 본문 저장 금지 |
-| `analysis_context` | scope, scope_key, period, model, reasoning_effort, summary | 명시적으로 제출된 파생 요약, append-only |
+| `NormalizedMessage` | source, message_id, thread, author, timestamp_utc, kind, content, attachments | 최적화 전 원문 모델 |
+| `source_thread` | source, source_thread_id, display_name, alias | 모델에는 alias만 전달 |
+| `speaker` | thread_id, source_author_id, display_name, alias, is_self | 자기 자신은 A |
+| `archived_message` | 원문, attachments JSON, hash, ingested/presented/analyzed 시각, context ID | 사용자 로컬 SQLite |
+| `source_sync` | source, period, insert/update/unchanged count, completed_at | 원문 없는 실행 기록 |
+| `message_audit` | source_message_id, profile, hash, kept, transform_codes | 변환 추적 |
+| `analysis_context` | scope, period, model, effort, summary, coverage, rollup link/watermark | append-only 세션/스레드/전역 요약 |
 
-## 런타임 시퀀스와 트랜잭션 경계
+## 동기화
 
-1. 외부 프로세스 stdout을 메모리에서 파싱한다.
-2. 전 행 검증과 최적화를 완료한다.
-3. `BEGIN IMMEDIATE` 이후 별칭과 감사 행을 upsert한다.
-4. commit 뒤 모델 형식을 렌더링한다. 렌더러는 DB를 쓰지 않는다.
+1. 외부 프로세스 stdout을 메모리에서 전부 파싱·검증한다.
+2. exact profile로 별칭과 원문 해시를 준비한다.
+3. `BEGIN IMMEDIATE`에서 별칭·감사·원문·sync 실행을 함께 upsert한다.
+4. 기존 행과 본문·시각·화자·종류·첨부가 달라지면 `last_presented_at_utc`, `analyzed_at_utc`, `analysis_context_id`를 `NULL`로 만든다.
 
-외부 출력이 불완전하거나 파싱이 실패하면 상태 트랜잭션을 시작하지 않는다. 동일 원본 메시지는 `(source, source_message_id)`로 멱등 upsert한다.
+소스 출력이 불완전하거나 파싱이 실패하면 상태 트랜잭션을 시작하지 않는다.
+
+## 증분 분석
+
+1. `pending`은 선택 범위의 `analysis_context_id IS NULL` 행만 읽는다.
+2. 공통 옵티마이저와 exporter가 CCT를 만든다.
+3. stdout flush 성공 후 입력 행의 `last_presented_at_utc`를 기록한다.
+4. 분석기는 CCT의 각 `S` 구간을 요약한다.
+5. `context put session`은 제시된 pending 행의 정렬된 `(message_id, content_sha256)` 집합 해시와 요약을 저장하고 분석 연결을 한 트랜잭션에서 설정한다.
+6. `context inputs thread`는 미반영 세션 요약을 모두 CTX로 내보낸다. `context inputs global`은 별칭별 최신 미반영 thread rollup만 내보내 중간 누적 버전을 생략한다.
+7. 분석기는 기존 스레드 rollup과 CTX 세션 입력으로 새 `thread` rollup을, 기존 전역 rollup과 CTX thread 입력으로 새 `global` rollup을 만든다.
+8. `context put thread|global --through-context-id`는 rollup insert와 watermark 이하 입력 연결을 원자적으로 처리한다. 출력 뒤 생긴 더 큰 ID는 다음 실행에 남는다.
+9. 다음 분석은 최신 전역/스레드 rollup과 새 pending만 사용한다.
 
 ## 실패 처리
 
-- 외부 명령의 비정상 종료는 stderr 본문을 그대로 로그에 남기지 않고 종료 코드와 오류 분류만 보존한다.
-- JSON/NDJSON 스키마 오류는 행 번호와 누락 필드명으로 실패한다.
-- SQLite 오류는 롤백 후 원본 오류 체인을 상위로 전달한다.
-- stdout 쓰기 실패는 렌더 단계 실패로 반환한다.
+- 외부 명령의 비정상 종료는 stderr 본문을 로그에 남기지 않고 종료 코드만 보존한다.
+- JSON/NDJSON 오류는 행 번호와 누락 필드명으로 실패한다.
+- SQLite 오류는 롤백 후 오류 체인을 상위로 전달한다.
+- stdout 쓰기 실패 시 제시 시점을 기록하지 않는다.
+- 요약 저장이나 coverage 검증 실패 시 메시지를 pending으로 유지한다.
 
 ## 보안
 
-- 실행 가능한 하위 명령을 코드 상수로 제한한다.
-- 셸을 통하지 않고 `Command` 인자 배열을 사용한다.
-- 상태 디렉터리/파일 권한을 매 실행 검증·교정한다.
-- 첨부 경로와 연락처 핸들은 공통 모델에서 폐기하고 종류·MIME·크기만 남긴다.
-
-## 관측성
-
-`[extract:<source>:start|success|failure]`, `[state:sqlite:*]`, `[pipeline:optimize:*]`, `[export:<format>:*]` 경계를 기록한다. 필드는 source, row_count, duration_ms, profile, transform_count만 허용한다.
-
-## 마이그레이션 / 롤백
-
-SQLite `PRAGMA user_version`으로 단방향 스키마 마이그레이션을 수행한다. 새 CCT 버전은 헤더 버전을 올리고 기존 파서를 유지한다. 애플리케이션 롤백 시 상태 DB를 삭제할 필요가 없도록 additive migration을 우선한다.
+- 실행 가능한 소스 하위 명령을 코드 상수로 제한하고 셸을 사용하지 않는다.
+- 원문은 상태 SQLite에만 저장하며 로그·Git·별도 덤프에 기록하지 않는다.
+- 상태 디렉터리/파일 권한을 `0700`/`0600`으로 교정한다.
+- SQLite 자체는 암호화되지 않으므로 FileVault와 소유자 계정 경계를 요구한다.
 
 ## 테스트 전략
 
-합성 fixture의 소스별 의미 동등성, 모든 최적화 분기, CCT escaping/상속 왕복, 별칭 재실행 결정성, 상태 파일 모드와 로그 redaction을 검증한다. 실데이터 테스트는 집계 기준만 비교한다.
+합성 fixture로 소스별 파싱, 원문 round-trip, 동기화 멱등성, 수정 시 pending 복귀, 제시 전 요약 거부, 세션 요약의 원자적 분석 연결, CCT escaping, 별칭 결정성과 파일 모드를 검증한다. 실데이터 테스트는 집계만 출력한다.
 
 ## 관련 문서
 
-**요구사항 README** — [Message Pipeline Requirements](../../requirements/pipeline/README.md)
+**요구사항** — [Message Pipeline Requirements](../../requirements/pipeline/README.md)
 
-**유스케이스** — [UC-PIPE-001 기간 메시지 컨텍스트 내보내기](../../requirements/pipeline/use-cases/UC-PIPE-001-export-thread-context.md)
+**유스케이스** — [UC-PIPE-001](../../requirements/pipeline/use-cases/UC-PIPE-001-export-thread-context.md)
 
-**ADR** — [ADR-0001 Rust core와 CLI adapter](../../adr/0001-rust-core-cli-adapters.md) · [ADR-0002 CCT 세션 형식](../../adr/0002-cct-session-format.md) · [ADR-0003 최적화 단계 경계](../../adr/0003-source-normalization-common-optimization.md)
+**계약** — [CCT](../../../contracts/cct/CCT.md) · [CTX](../../../contracts/context/CTX.md)
+
+**ADR** — [ADR-0001](../../adr/0001-rust-core-cli-adapters.md) · [ADR-0002](../../adr/0002-cct-session-format.md) · [ADR-0003](../../adr/0003-source-normalization-common-optimization.md) · [ADR-0004](../../adr/0004-local-raw-archive-incremental-analysis.md)
 
 **상위** — [ARCHITECTURE](../../../ARCHITECTURE.md)

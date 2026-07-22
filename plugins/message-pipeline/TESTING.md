@@ -6,12 +6,12 @@ owner: maintainer
 
 ## 범위
 
-소스 파서, 읽기 전용 명령 구성, 정규화/최적화, 별칭 영속성, CCT 이스케이프 왕복, 토큰 집계와 CLI 오류 경계를 검증한다.
+소스 파서, 읽기 전용 명령 구성, 원문 아카이브, 증분 상태, 정규화/최적화, 별칭 영속성, CCT 이스케이프 왕복, 토큰 집계와 CLI 오류 경계를 검증한다.
 
 ## 테스트 레벨
 
 - 단위: 각 변환 규칙과 CCT codec
-- 통합: 가짜 CLI fixture에서 공통 모델 및 SQLite 상태까지
+- 통합: 가짜 CLI fixture에서 sync, 원문 SQLite, pending, 세션 커밋, CTX watermark rollup과 status까지
 - CLI: stdout/stderr 분리, 종료 코드, 콘텐츠 비노출
 - 실데이터 회귀: 메시지 수·변환 수·토큰 수·해시만 비교
 
@@ -27,7 +27,8 @@ Rust `1.97.1`, macOS, SQLite bundled 빌드를 기준으로 한다. 실데이터
 
 - `TEST-UNIT-PIPE-001` -> `AC-PIPE-001`: CCT/별칭/변환 단위 테스트
 - `TEST-INT-PIPE-001` -> `AC-PIPE-001`: fixture 기반 양쪽 소스 통합 테스트
-- `TEST-SEC-PIPE-001` -> `NFR-PRI-001`~`002`, `NFR-SEC-001`: 상태 파일 권한, 원문 비저장과 파생 맥락 scope 검증
+- `TEST-SEC-PIPE-001` -> `NFR-PRI-001`~`002`, `NFR-SEC-001`~`002`: 상태 파일 권한, 원문 로컬 한정과 로그 비노출 검증
+- `TEST-STATE-PIPE-001` -> `FR-PIPE-ARCHIVE-001`~`003`, `FR-PIPE-CONTEXT-002`~`004`, `NFR-REL-002`~`003`: 멱등 sync, 변경 시 pending 복귀, 제시·세션 coverage·미반영 rollup 상태 검증
 - `TEST-PERF-PIPE-001` -> `NFR-PERF-001`: `o200k_base` 집계와 기준 형식 대비 절감률
 
 ## 리포팅

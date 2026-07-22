@@ -96,6 +96,26 @@ impl fmt::Display for MessageKind {
     }
 }
 
+impl FromStr for MessageKind {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self> {
+        match value {
+            "text" => Ok(Self::Text),
+            "image" => Ok(Self::Image),
+            "video" => Ok(Self::Video),
+            "audio" => Ok(Self::Audio),
+            "file" => Ok(Self::File),
+            "sticker" => Ok(Self::Sticker),
+            "location" => Ok(Self::Location),
+            "link" => Ok(Self::Link),
+            "system" => Ok(Self::System),
+            "unknown" => Ok(Self::Unknown),
+            _ => bail!("unsupported archived message kind"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AttachmentMeta {
     pub kind: MessageKind,

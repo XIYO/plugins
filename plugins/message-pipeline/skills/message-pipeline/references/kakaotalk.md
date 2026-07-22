@@ -89,9 +89,9 @@ kakaocli schema
 
 ## 대량 추출과 토큰 최적화
 
-여러 채팅방이나 긴 기간을 모델 분석용으로 준비할 때는 이 스킬의 `msgpipe`를 사용한다. 이 문서는 인증·권한·읽기 도구 복구를 설명하고, `msgpipe`는 고정된 읽기 전용 쿼리로 추출한 뒤 공통 정규화·치환·CCT 내보내기를 담당한다.
+여러 채팅방이나 긴 기간을 모델 분석용으로 준비할 때는 이 스킬의 `msgpipe`를 사용한다. 이 문서는 인증·권한·읽기 도구 복구를 설명하고, `msgpipe sync kakao`는 고정된 읽기 전용 쿼리로 원문을 로컬 아카이브에 멱등 동기화한다. 이후 공통 정규화·치환·CCT 내보내기는 아카이브만 읽는다.
 
-- 먼저 `msgpipe benchmark kakao`로 본문 없는 토큰 통계를 확인하고, 분석이 승인된 뒤 `msgpipe export kakao --thread K001 ...`처럼 방 하나만 내보낸다.
+- 요청 범위를 `msgpipe sync kakao`로 한 번 동기화한 뒤 `msgpipe benchmark kakao`로 본문 없는 토큰 통계를 확인한다. 분석이 승인된 뒤 `msgpipe pending kakao --thread K001 ...`처럼 미분석 방 하나만 내보낸다.
 - KakaoTalk의 일반 텍스트 `type=1`에도 mention/linkify/bot용 `attachment` JSON이 흔히 존재한다. 값이 있다는 이유만으로 `@file` 또는 `@image`로 치환하지 않는다.
 - 텍스트·이미지·영상·이모티콘·위치·답장·다중 사진 등 앱별 타입 해석은 KakaoTalk 소스 어댑터에서 끝낸다. 채팅 표현 치환과 교차 메시지 최적화는 앱별로 복제하지 않는다.
 

@@ -34,6 +34,8 @@ Mac에 동기화된 `~/Library/Messages/chat.db`의 iMessage·SMS·RCS 기록을
 
    이미 설치되어 있으면 `brew update` 후 `brew upgrade imsg`로 최신 안정판을 사용한다. 임의 블로그의 바이너리나 오래된 포크를 설치하지 않는다.
 
+   공식 macOS ZIP을 직접 설치해야 한다면 실행 파일만 복사하지 않는다. ZIP의 `PhoneNumberKit_PhoneNumberKit.bundle`과 `SQLite.swift_SQLite.bundle`을 `imsg` 실행 파일과 같은 디렉터리에 그대로 둔다. 읽기 전용 명령에는 `imsg-bridge-helper.dylib`이 필요하지 않다.
+
 3. 개인정보를 출력하지 않는 최소 점검만 수행한다.
 
    ```bash
@@ -87,14 +89,15 @@ Mac에 동기화된 `~/Library/Messages/chat.db`의 iMessage·SMS·RCS 기록을
 
 ## 대량 추출과 토큰 최적화
 
-여러 채팅이나 긴 기간을 모델 분석용으로 준비할 때는 이 스킬의 `msgpipe`를 사용한다. 이 문서는 권한·공식 CLI 복구를 설명하고, `msgpipe`는 `chats`와 `history --attachments`만 호출해 공통 정규화·치환·CCT 내보내기를 수행한다.
+여러 채팅이나 긴 기간을 모델 분석용으로 준비할 때는 이 스킬의 `msgpipe`를 사용한다. 이 문서는 권한·공식 CLI 복구를 설명하고, `msgpipe sync imessage`는 `chats`와 `history --attachments`만 호출해 원문을 로컬 아카이브에 멱등 동기화한다. 이후 공통 정규화·치환·CCT 내보내기는 아카이브만 읽는다.
 
-- 먼저 `msgpipe benchmark imessage`로 본문 없는 토큰 통계를 확인하고, 분석이 승인된 뒤 `msgpipe export imessage --thread I001 ...`처럼 채팅 하나만 내보낸다.
+- 요청 범위를 `msgpipe sync imessage`로 한 번 동기화한 뒤 `msgpipe benchmark imessage`로 본문 없는 토큰 통계를 확인한다. 분석이 승인된 뒤 `msgpipe pending imessage --thread I001 ...`처럼 미분석 채팅 하나만 내보낸다.
 - `reply_to_guid`·`reply_to_text`는 순차 SMS 연결에도 나타날 수 있는 약한 신호다. `thread_originator_guid` 같은 강한 구조 신호 없이 인라인 답장 관계로 정규화하지 않는다.
 - `attributedBody`, 첨부, 서비스 종류 같은 앱별 해석은 iMessage 소스 어댑터에서 끝낸다. 채팅 표현 치환과 교차 메시지 최적화는 앱별로 복제하지 않는다.
 
 ## 오류 진단
 
+- `PhoneNumberKit/resource_bundle_accessor.swift: Fatal error: unable to find bundle named PhoneNumberKit_PhoneNumberKit`와 종료 코드 133: 공식 ZIP에서 `imsg` 바이너리만 떼어 설치한 패키징 오류다. 권한을 바꾸거나 같은 명령을 반복하지 않는다. Homebrew Formula로 재설치하거나, 같은 버전의 공식 ZIP에서 `PhoneNumberKit_PhoneNumberKit.bundle`과 `SQLite.swift_SQLite.bundle`을 실행 파일 옆에 복원한 뒤 본문을 버리는 `imsg chats --limit 1 --json --log-level error >/dev/null`로 검증한다.
 - `unable to open database file`, `authorization denied`, 빈 출력: 전체 디스크 접근의 대상이 실제 상위 앱인지 확인하고 해당 앱을 재실행한다. OS·Homebrew·앱 업데이트 뒤에는 기존 권한 토글을 껐다 켠다.
 - 조회는 되지만 이름이 없음: 연락처 권한 문제다. 원시 핸들로 계속 조회할 수 있으며 권한 없이 이름을 추측하지 않는다.
 - 기록이 누락됨: DB에는 이 Mac에 실제로 동기화된 내용만 있다. Messages.app 로그인과 iCloud 메시지 동기화 상태를 확인하며, 로컬 CLI가 iCloud 서버의 미동기화 기록을 만들어낼 수 있다고 가정하지 않는다.

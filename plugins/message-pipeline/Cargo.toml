@@ -1,9 +1,9 @@
 [package]
 name = "msgpipe"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.97.1"
-description = "Read-only local message optimizer and compact transcript exporter"
+description = "Read-only source sync, local raw-message archive, and incremental transcript exporter"
 license = "MIT"
 publish = false
 

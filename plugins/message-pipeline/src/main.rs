@@ -9,13 +9,14 @@ use anyhow::{Context, Result};
 use chrono_tz::Tz;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use msgpipe::{
+    archive::ArchiveQuery,
     benchmark,
     command::{CommandRunner, SystemCommandRunner},
-    export::{ExportConfig, ExportFormat, render},
+    export::{ExportConfig, ExportFormat, escape_field, render},
     extract::{ExtractRequest, extract_source, resolve_binary},
     model::SourceKind,
     optimizer::{OptimizationProfile, optimize},
-    state::{ContextScope, StateStore},
+    state::{AnalysisContextDraft, ContextScope, StateStore},
     time_range::DateRange,
 };
 use tracing::error;
@@ -25,7 +26,7 @@ use tracing_subscriber::EnvFilter;
 #[command(
     name = "msgpipe",
     version,
-    about = "Read-only local message optimizer and exporter"
+    about = "Read-only source sync, local message archive, and incremental context exporter"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -34,16 +35,22 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Extract, optimize, alias, and write a model-ready transcript to stdout.
+    /// Read a source range once and upsert the original messages into protected local SQLite.
+    Sync(SyncArgs),
+    /// Load archived messages, optimize them, and write a model-ready transcript to stdout.
     Export(PipelineArgs),
-    /// Count tokens and transformations without printing any message content.
+    /// Export only archived messages that are not covered by a committed session summary.
+    Pending(PipelineArgs),
+    /// Count archived-message tokens and transformations without printing message content.
     Benchmark(PipelineArgs),
     /// Verify that a source reader exists without reading message content.
     Doctor(DoctorArgs),
-    /// Store or retrieve derived per-thread/global analysis context.
+    /// Store or retrieve derived session, cumulative thread, or global analysis context.
     Context(ContextArgs),
     /// Resolve a stable thread/speaker alias map from protected local state.
     Identities(IdentityArgs),
+    /// Show per-thread archive, pending, presentation, and analysis metadata without message text.
+    Status(StatusArgs),
     /// Print the compact CCT legend used in model prompts.
     CctSpec,
 }
@@ -66,19 +73,47 @@ struct PipelineArgs {
     format: FormatArg,
     #[arg(long, default_value_t = 30)]
     session_gap_minutes: u32,
+    /// Protected SQLite message archive and analysis database.
+    #[arg(long)]
+    state: Option<PathBuf>,
+    /// Export or benchmark only this stable K001/I001 thread alias.
+    #[arg(long)]
+    thread: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct SyncArgs {
+    #[arg(value_enum)]
+    source: SourceArg,
+    /// Inclusive source start, as YYYY-MM-DD in --timezone or RFC 3339.
+    #[arg(long)]
+    start: String,
+    /// Exclusive source end, as YYYY-MM-DD in --timezone or RFC 3339.
+    #[arg(long)]
+    end: String,
+    #[arg(long, default_value = "Asia/Seoul")]
+    timezone: String,
     /// Explicit path to kakaocli or imsg; otherwise PATH is searched.
     #[arg(long)]
     binary: Option<PathBuf>,
-    /// Protected SQLite mapping/audit database.
+    /// Protected SQLite message archive and analysis database.
     #[arg(long)]
     state: Option<PathBuf>,
     #[arg(long, default_value_t = 10_000)]
     chat_limit: usize,
     #[arg(long, default_value_t = 1_000_000)]
     message_limit_per_chat: usize,
-    /// Export or benchmark only this stable thread alias after registering all aliases.
+}
+
+#[derive(Debug, Args)]
+struct StatusArgs {
+    #[arg(value_enum)]
+    source: Option<SourceArg>,
+    /// Limit status to one stable K001/I001 thread alias.
     #[arg(long)]
     thread: Option<String>,
+    #[arg(long)]
+    state: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -105,10 +140,12 @@ struct IdentityArgs {
 
 #[derive(Debug, Subcommand)]
 enum ContextCommand {
-    /// Append a derived summary read from stdin.
+    /// Append a derived summary; session scope atomically marks its pending archive range analyzed.
     Put(ContextPutArgs),
     /// Print the latest derived summary for a scope.
     Get(ContextGetArgs),
+    /// Print compact unrolled session or thread summaries and their commit watermark.
+    Inputs(ContextInputsArgs),
     /// List context metadata without summary bodies.
     List(ContextListArgs),
 }
@@ -117,7 +154,7 @@ enum ContextCommand {
 struct ContextPutArgs {
     #[arg(value_enum)]
     scope: ContextScopeArg,
-    /// Required for thread scope; use the stable K001/I001 alias.
+    /// Required for session and thread scope; use the stable K001/I001 alias.
     #[arg(long)]
     thread: Option<String>,
     #[arg(long)]
@@ -130,6 +167,9 @@ struct ContextPutArgs {
     model: String,
     #[arg(long, default_value = "medium")]
     reasoning_effort: String,
+    /// Required for thread/global rollups; copy `through` from `context inputs`.
+    #[arg(long)]
+    through_context_id: Option<i64>,
     #[arg(long)]
     state: Option<PathBuf>,
 }
@@ -150,8 +190,26 @@ struct ContextListArgs {
     state: Option<PathBuf>,
 }
 
+#[derive(Debug, Args)]
+struct ContextInputsArgs {
+    #[arg(value_enum)]
+    scope: RollupScopeArg,
+    /// Required for thread rollups; use the stable K001/I001 alias.
+    #[arg(long)]
+    thread: Option<String>,
+    #[arg(long)]
+    state: Option<PathBuf>,
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum ContextScopeArg {
+    Global,
+    Thread,
+    Session,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum RollupScopeArg {
     Global,
     Thread,
 }
@@ -238,11 +296,14 @@ fn init_logging() {
 
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
-        Command::Export(args) => run_export(args),
+        Command::Sync(args) => run_sync(args),
+        Command::Export(args) => run_export(args, false),
+        Command::Pending(args) => run_export(args, true),
         Command::Benchmark(args) => run_benchmark(args),
         Command::Doctor(args) => run_doctor(args),
         Command::Context(args) => run_context(args),
         Command::Identities(args) => run_identities(args),
+        Command::Status(args) => run_status(args),
         Command::CctSpec => {
             println!(
                 "CCT3: !CCT3|g=minutes|z=timezone; T=thread; D=YYMMDD; S=HHmm; row=speaker|text; blank speaker inherits; A=self; Y/N/?=reaction"
@@ -252,13 +313,37 @@ fn run(cli: Cli) -> Result<()> {
     }
 }
 
-fn run_export(args: PipelineArgs) -> Result<()> {
-    let prepared = prepare(&args)?;
+fn run_sync(args: SyncArgs) -> Result<()> {
+    if args.chat_limit == 0 || args.message_limit_per_chat == 0 {
+        anyhow::bail!("source limits must be greater than zero")
+    }
+    let timezone: Tz = args
+        .timezone
+        .parse()
+        .context("invalid IANA timezone name")?;
+    let range = DateRange::parse(&args.start, &args.end, timezone)?;
+    let binary = resolve_binary(args.binary, args.source.program())?;
+    let mut request = ExtractRequest::for_binary(range, binary);
+    request.chat_limit = args.chat_limit;
+    request.message_limit_per_chat = args.message_limit_per_chat;
+    let messages = extract_source(args.source.kind(), &request)?;
+    let state_path = args.state.unwrap_or(StateStore::default_path()?);
+    let mut state = StateStore::open(&state_path)?;
+    let report = state.archive_messages(args.source.kind(), range, &messages)?;
+    println!("{}", serde_json::to_string_pretty(&report)?);
+    Ok(())
+}
+
+fn run_export(args: PipelineArgs, pending_only: bool) -> Result<()> {
+    let prepared = load_archive(&args, pending_only)?;
+    if pending_only && prepared.messages.is_empty() {
+        return Ok(());
+    }
     let profile = OptimizationProfile::from(args.profile);
     let outcome = optimize(&prepared.messages, profile)?;
     let state_path = args.state.unwrap_or(StateStore::default_path()?);
     let mut state = StateStore::open(&state_path)?;
-    let aliased = select_thread(state.register(&outcome)?, args.thread.as_deref())?;
+    let aliased = state.register(&outcome)?;
     let rendered = render(
         args.format.into(),
         &aliased,
@@ -275,18 +360,19 @@ fn run_export(args: PipelineArgs) -> Result<()> {
         .context("unable to write exported transcript")?;
     output
         .flush()
-        .context("unable to flush exported transcript")
+        .context("unable to flush exported transcript")?;
+    state.mark_presented(&prepared.messages)
 }
 
 fn run_benchmark(args: PipelineArgs) -> Result<()> {
-    let prepared = prepare(&args)?;
+    let prepared = load_archive(&args, false)?;
     let profile = OptimizationProfile::from(args.profile);
     let exact = optimize(&prepared.messages, OptimizationProfile::Exact)?;
     let optimized = optimize(&prepared.messages, profile)?;
     let state_path = args.state.unwrap_or(StateStore::default_path()?);
     let mut state = StateStore::open(&state_path)?;
-    let raw_aliased = select_thread(state.register(&exact)?, args.thread.as_deref())?;
-    let optimized_aliased = select_thread(state.register(&optimized)?, args.thread.as_deref())?;
+    let raw_aliased = state.register(&exact)?;
+    let optimized_aliased = state.register(&optimized)?;
     let report = benchmark::measure(
         args.source.kind(),
         &raw_aliased,
@@ -333,11 +419,14 @@ fn run_context(args: ContextArgs) -> Result<()> {
             }
             let id = state.save_analysis_context(
                 &scope,
-                range.start,
-                range.end,
-                &args.model,
-                &args.reasoning_effort,
-                &summary,
+                AnalysisContextDraft {
+                    period_start: range.start,
+                    period_end: range.end,
+                    model: &args.model,
+                    reasoning_effort: &args.reasoning_effort,
+                    summary: &summary,
+                    input_context_max_id: args.through_context_id,
+                },
             )?;
             println!("{id}");
             Ok(())
@@ -350,6 +439,17 @@ fn run_context(args: ContextArgs) -> Result<()> {
                 .latest_analysis_context(&scope)?
                 .context("no analysis context exists for this scope")?;
             print!("{}", context.summary);
+            Ok(())
+        }
+        ContextCommand::Inputs(args) => {
+            let scope = rollup_scope(args.scope, args.thread)?;
+            let state_path = args.state.unwrap_or(StateStore::default_path()?);
+            let state = StateStore::open(&state_path)?;
+            let contexts = state.pending_rollup_contexts(&scope)?;
+            if contexts.is_empty() {
+                return Ok(());
+            }
+            print!("{}", render_rollup_inputs(&scope, &contexts));
             Ok(())
         }
         ContextCommand::List(args) => {
@@ -374,6 +474,18 @@ fn run_identities(args: IdentityArgs) -> Result<()> {
     Ok(())
 }
 
+fn run_status(args: StatusArgs) -> Result<()> {
+    let state_path = args.state.unwrap_or(StateStore::default_path()?);
+    let state = StateStore::open(&state_path)?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(
+            &state.archive_status(args.source.map(SourceArg::kind), args.thread.as_deref())?
+        )?
+    );
+    Ok(())
+}
+
 fn context_scope(scope: ContextScopeArg, thread: Option<String>) -> Result<ContextScope> {
     match (scope, thread) {
         (ContextScopeArg::Global, None) => Ok(ContextScope::Global),
@@ -386,7 +498,55 @@ fn context_scope(scope: ContextScopeArg, thread: Option<String>) -> Result<Conte
         (ContextScopeArg::Thread, _) => {
             anyhow::bail!("--thread is required for thread context")
         }
+        (ContextScopeArg::Session, Some(alias)) if !alias.trim().is_empty() => {
+            Ok(ContextScope::Session(alias))
+        }
+        (ContextScopeArg::Session, _) => {
+            anyhow::bail!("--thread is required for session context")
+        }
     }
+}
+
+fn rollup_scope(scope: RollupScopeArg, thread: Option<String>) -> Result<ContextScope> {
+    match (scope, thread) {
+        (RollupScopeArg::Global, None) => Ok(ContextScope::Global),
+        (RollupScopeArg::Global, Some(_)) => {
+            anyhow::bail!("--thread is not valid for global rollup inputs")
+        }
+        (RollupScopeArg::Thread, Some(alias)) if !alias.trim().is_empty() => {
+            Ok(ContextScope::Thread(alias))
+        }
+        (RollupScopeArg::Thread, _) => {
+            anyhow::bail!("--thread is required for thread rollup inputs")
+        }
+    }
+}
+
+fn render_rollup_inputs(
+    scope: &ContextScope,
+    contexts: &[msgpipe::state::AnalysisContext],
+) -> String {
+    let input_scope = match scope {
+        ContextScope::Thread(_) => "session",
+        ContextScope::Global => "thread",
+        ContextScope::Session(_) => unreachable!("session cannot be a rollup target"),
+    };
+    let Some(through) = contexts.last().map(|context| context.metadata.id) else {
+        return String::new();
+    };
+    let mut output = format!(
+        "!CTX1|scope={input_scope}|through={through}|count={}\n",
+        contexts.len()
+    );
+    for context in contexts {
+        output.push_str(&format!(
+            "C|{}|{}|{}\n",
+            context.metadata.id,
+            escape_field(&context.metadata.scope_key),
+            escape_field(&context.summary)
+        ));
+    }
+    output
 }
 
 struct PreparedPipeline {
@@ -394,39 +554,25 @@ struct PreparedPipeline {
     messages: Vec<msgpipe::NormalizedMessage>,
 }
 
-fn prepare(args: &PipelineArgs) -> Result<PreparedPipeline> {
+fn load_archive(args: &PipelineArgs, pending_only: bool) -> Result<PreparedPipeline> {
     if args.session_gap_minutes == 0 {
         anyhow::bail!("session gap must be greater than zero")
-    }
-    if args.chat_limit == 0 || args.message_limit_per_chat == 0 {
-        anyhow::bail!("source limits must be greater than zero")
     }
     let timezone: Tz = args
         .timezone
         .parse()
         .context("invalid IANA timezone name")?;
     let range = DateRange::parse(&args.start, &args.end, timezone)?;
-    let binary = resolve_binary(args.binary.clone(), args.source.program())?;
-    let mut request = ExtractRequest::for_binary(range, binary);
-    request.chat_limit = args.chat_limit;
-    request.message_limit_per_chat = args.message_limit_per_chat;
-    let messages = extract_source(args.source.kind(), &request)?;
-    Ok(PreparedPipeline { timezone, messages })
-}
-
-fn select_thread(
-    messages: Vec<msgpipe::AliasedMessage>,
-    thread_alias: Option<&str>,
-) -> Result<Vec<msgpipe::AliasedMessage>> {
-    let Some(thread_alias) = thread_alias else {
-        return Ok(messages);
-    };
-    let selected: Vec<_> = messages
-        .into_iter()
-        .filter(|message| message.thread_alias == thread_alias)
-        .collect();
-    if selected.is_empty() {
-        anyhow::bail!("thread alias was not found in the selected source and date range")
+    let state_path = args.state.clone().unwrap_or(StateStore::default_path()?);
+    let state = StateStore::open(&state_path)?;
+    let messages = state.load_archived_messages(&ArchiveQuery {
+        source: args.source.kind(),
+        range,
+        thread_alias: args.thread.clone(),
+        pending_only,
+    })?;
+    if messages.is_empty() && !pending_only {
+        anyhow::bail!("archive has no messages for the selected range; run msgpipe sync first")
     }
-    Ok(selected)
+    Ok(PreparedPipeline { timezone, messages })
 }

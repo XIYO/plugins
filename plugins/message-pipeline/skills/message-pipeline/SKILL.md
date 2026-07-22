@@ -1,120 +1,144 @@
 ---
 name: message-pipeline
-description: 하나의 설치형 스킬로 macOS의 KakaoTalk·iMessage 로컬 기록을 읽기 전용 추출한다. msgpipe를 사용해 공통 정규화·채팅 표현 치환·대화 구조 최적화 후 CCT로 스레드별 내보내고, o200k_base 토큰을 벤치마크하며 중앙 별칭·분석 맥락을 관리한다. "카톡/문자 읽어줘", "카톡/문자 토큰 줄여줘", "대화 익스포트", "스레드별 분석", "CCT", "메시지 옵티마이저", KakaoTalk와 iMessage 통합 분석 준비 요청에 사용한다.
+description: 하나의 설치형 스킬로 macOS의 KakaoTalk·iMessage 기록을 읽기 전용 동기화하고 원문을 소유자 전용 로컬 SQLite에 멱등 보관한다. msgpipe로 미분석 메시지만 공통 정규화·채팅 표현 치환·대화 구조 최적화 후 스레드·세션별 CCT로 내보내며, 마지막 수집·제시·분석 시점과 세션 요약·스레드/전역 누적 맥락을 관리한다. "카톡/문자 읽어줘", "대화 동기화", "새 메시지만 분석", "언제까지 봤지", "카톡/문자 토큰 줄여줘", "스레드별 일정 분석", "CCT", KakaoTalk와 iMessage 통합 분석 요청에 사용한다.
 ---
 
 # 메시지 파이프라인
 
-KakaoTalk와 iMessage의 서로 다른 출력은 소스 어댑터에서 끝낸다. 이후 단계는 같은 정규화 모델과 옵티마이저를 사용하고, 모델에는 이름·원본 ID 대신 안정적인 별칭과 CCT를 전달한다.
+이 스킬 하나가 KakaoTalk와 iMessage를 모두 지원한다. 앱 차이는 소스 어댑터에서 끝내고, 원문 아카이브 이후에는 같은 옵티마이저·CCT·증분 분석 절차를 사용한다.
 
-이 스킬 하나가 두 소스를 모두 지원한다. 별도의 KakaoTalk·iMessage 스킬을 설치하지 않는다. 요청한 소스에 따라 아래 참조 문서만 선택해서 읽는다.
-
-- KakaoTalk의 인증·권한·`kakaocli` 설치 또는 복구가 필요하면 [KakaoTalk 소스](references/kakaotalk.md)를 읽는다.
-- iMessage의 권한·`imsg` 설치 또는 복구가 필요하면 [iMessage 소스](references/imessage.md)를 읽는다.
-- 두 소스를 함께 다루는 작업에서만 두 문서를 모두 읽는다.
+- KakaoTalk 인증·권한·`kakaocli` 복구가 필요하면 [KakaoTalk 소스](references/kakaotalk.md)를 읽는다.
+- iMessage 권한·`imsg` 복구가 필요하면 [iMessage 소스](references/imessage.md)를 읽는다.
+- 두 소스를 함께 다룰 때만 두 문서를 모두 읽는다.
 
 ## 실행 위치
 
-- 이 `SKILL.md`에서 두 디렉터리 위를 플러그인 루트로 해석한다. marketplace 설치본은 캐시로 복사되므로 원래 clone 경로나 저장소 밖 파일을 가정하지 않는다.
-- 설치된 `msgpipe`가 있으면 우선 사용한다.
-- `msgpipe`가 없으면 플러그인 루트의 설치 스크립트를 실행한다.
+- 이 파일에서 두 디렉터리 위를 플러그인 루트로 해석한다. marketplace 캐시 밖 경로를 가정하지 않는다.
+- `msgpipe`가 없으면 플러그인 루트에서 설치한다.
 
   ```bash
   bash <plugin-root>/scripts/install-runtime.sh
   ```
 
-- 설치하지 않고 개발·진단할 때만 `cargo run --manifest-path <plugin-root>/Cargo.toml -- <command>`를 사용한다.
-- 앱을 수정하거나 포맷을 진단할 때만 플러그인 루트의 `ARCHITECTURE.md`와 `contracts/cct/CCT.md`를 읽는다. 구현을 스킬 안에 복제하지 않는다.
+- 구현을 수정할 때만 플러그인 루트의 `ARCHITECTURE.md`와 `contracts/cct/CCT.md`를 읽는다.
 
-## 불변 경계
+## 저장과 개인정보 경계
 
-- 원본 DB와 소스 CLI는 읽기 전용으로만 다룬다. 인증·권한·CLI 설치 문제는 위의 해당 소스 참조 문서를 따른다.
-- 사용자가 `읽기`, `CCT 내보내기·준비`, `분석`처럼 본문이 필요한 작업을 명시하기 전에는 추출 크기와 토큰 비용만 측정한다. 벤치마크는 본문을 출력하지 않는다.
-- `CCT 준비`나 `내보내기` 요청은 지정된 소스·기간·스레드의 CCT 출력만 승인한다. 모델 분석, context 저장, identity 해석까지 승인한 것으로 확대하지 않는다.
-- 메시지 평문 덤프를 파일이나 로그에 남기지 않는다. 로그에는 작업명·건수·소요 시간·오류 종류만 기록한다.
-- 날짜 범위는 `start <= timestamp < end`다. 날짜만 주어지면 기본 `Asia/Seoul` 자정으로 해석한다.
-- 첨부 파일은 메타데이터 표식만 유지한다. 사용자의 별도 요청 없이 파일을 열거나 변환하지 않는다.
-- 모델 입력에 identity map을 넣지 않는다. 일정 후보가 나온 뒤 필요한 결과에 한해서만 로컬에서 이름을 해석한다.
+- KakaoTalk·Messages 원본 DB와 소스 CLI는 계속 읽기 전용이다. `sync`가 쓰는 대상은 별도의 msgpipe 로컬 SQLite뿐이다.
+- `sync`는 최적화·축약 전 본문, 정확 시각, 원본 ID, 이름, 첨부 메타데이터를 공통 원문 모델로 보관한다. 동일 `(source, source_message_id)`는 멱등 upsert한다.
+- 로컬 상태 디렉터리는 `0700`, SQLite는 `0600`으로 강제한다. SQLite 자체는 애플리케이션 수준에서 암호화하지 않으므로 FileVault가 켜진 소유자 장치에만 둔다. 이 DB의 복사·백업에도 원문이 포함된다.
+- 메시지 원문, 이름, 연락처, 원본 ID, 인증 재료를 로그에 남기지 않는다. SQLite 외에 평문 덤프 파일을 만들지 않는다.
+- `status.last_presented_at_utc`는 msgpipe가 CCT를 마지막으로 준비해 표준 출력에 제시한 시각이지, KakaoTalk·Messages의 읽음 상태가 아니다.
+- 모델에는 실명·원본 ID 대신 안정적인 스레드·화자 별칭만 전달한다. 최종 결과에 필요할 때만 `identities`로 이름을 해석한다.
+- 첨부 파일은 메타데이터 표식만 보관한다. 별도 요청 없이 파일을 열거나 변환하지 않는다.
 
-## 구조
+## 데이터 흐름
 
 ```text
-source CLI
+read-only source CLI
   -> source adapter
-  -> NormalizedMessage
+  -> protected raw archive
+  -> pending-only query
   -> shared lexical replacer
   -> shared conversation optimizer
-  -> stable alias/state
-  -> format exporter
+  -> per-thread CCT
+  -> immutable session summary commit
+  -> cumulative thread rollup
+  -> cumulative global rollup
 ```
 
-- 앱별 JSON 필드, 메시지 타입, 첨부·답장 신호 해석은 소스 어댑터 책임이다.
-- `ㅋ`, `ㅋㅋㅋㅋ`, 단독 이모지·기호, 짧은 긍정·부정·질문, URL, 반복 글자 같은 표현 치환은 공통 lexical replacer 책임이다.
-- 시간상 인접한 중복 메시지와 같은 교차 메시지 판단은 공통 conversation optimizer 책임이다.
-- 시간·화자 상속, 세션 구분, escape는 exporter 책임이다. 앱별 옵티마이저를 따로 만들지 않는다.
-- KakaoTalk의 일반 텍스트 `type=1`에도 mention/linkify/bot 메타데이터가 있을 수 있으므로 `attachment` 필드가 비어 있지 않다는 이유만으로 첨부로 바꾸지 않는다.
-- iMessage의 `reply_to_guid`·`reply_to_text`는 SMS 연속 관계에도 나타날 수 있다. `thread_originator_guid` 같은 강한 신호 없이 답장 관계를 추론하지 않는다.
+- `ㅋ`, `ㅋㅋㅋㅋ`, 단독 이모지·기호, 짧은 긍정·부정·질문, URL, 반복 글자는 공통 lexical replacer가 처리한다.
+- 근접 중복 같은 교차 메시지 판단은 공통 conversation optimizer가 처리한다.
+- 시간·화자 상속과 30분 세션은 exporter가 처리한다. 앱별 옵티마이저를 만들지 않는다.
+- 수정되거나 뒤늦게 동기화된 메시지는 분석 연결을 해제해 자동으로 다시 pending 상태로 만든다.
 
-## 준비와 비용 측정
+## 동기화와 비용 측정
 
-- 별도 통화나 모델 단가가 없으면 "토큰 비용"은 `o200k_base` 토큰 수를 뜻한다. 금액을 추정하려면 사용자가 지정한 모델과 최신 입력 단가를 별도로 확인한다.
-- 상대 기간에서 "지난달"은 지난 달력월 전체, "이번 달"은 이번 달 1일부터 오늘을 포함하는 월 누계로 해석한다. 날짜 인자에는 현재 날짜의 다음 날을 exclusive `--end`로 사용한다. 사용자가 현재 시각까지의 엄밀한 범위를 요구할 때만 시각이 포함된 값을 사용한다.
+- 범위는 `start <= timestamp < end`다. 날짜만 주어지면 `Asia/Seoul` 자정으로 해석한다.
+- "지난달"은 지난 달력월 전체, "이번 달"은 1일부터 오늘을 포함하는 월 누계다. 오늘까지는 다음 날을 exclusive `--end`로 쓴다.
+- 별도 모델 단가가 없으면 "토큰 비용"은 `o200k_base` 토큰 수를 뜻한다.
 
-1. 본문을 읽지 않는 진단을 실행한다.
+1. 소스 리더를 확인한다.
 
    ```bash
    msgpipe doctor kakao
    msgpipe doctor imessage
    ```
 
-2. 같은 반개구간으로 소스별 비용을 측정한다. 기본 `schedule` + `cct`를 사용한다.
+2. 요청 범위를 로컬 아카이브에 먼저 동기화한다. 이 단계는 원문을 stdout에 출력하지 않는다.
+
+   ```bash
+   msgpipe sync kakao --start 2026-06-01 --end 2026-07-23
+   msgpipe sync imessage --start 2026-06-01 --end 2026-07-23
+   ```
+
+3. 원문 없이 스레드별 보관·pending·마지막 처리 시점을 확인한다.
+
+   ```bash
+   msgpipe status kakao
+   msgpipe status imessage
+   ```
+
+4. 아카이브에서 비용을 측정한다. `benchmark`는 소스 DB를 다시 읽지 않고 본문도 출력하지 않는다.
 
    ```bash
    msgpipe benchmark kakao --start 2026-06-01 --end 2026-07-23
    msgpipe benchmark imessage --start 2026-06-01 --end 2026-07-23
    ```
 
-3. 결과의 `thread_manifest`에서 스레드별 메시지 수·기간·토큰을 확인한다. 본문이 필요한 경우에도 전체가 아니라 안정 별칭 하나만 표준 출력으로 내보낸다.
+## 증분 분석
+
+사용자가 분석을 명시한 뒤에만 다음을 수행한다.
+
+1. `msgpipe context get global`과 `msgpipe context get thread --thread <alias>`로 최신 누적 요약을 읽는다. 없는 context는 빈 상태로 취급한다. 과거 session 원문이나 session 요약 전체를 다시 붙이지 않는다.
+2. `status`에서 `pending_messages > 0`인 별칭만 고른다.
+3. 스레드 하나의 미분석 원문만 CCT로 준비한다.
 
    ```bash
-   msgpipe export kakao --start 2026-06-01 --end 2026-07-23 --thread K001
-   msgpipe export imessage --start 2026-06-01 --end 2026-07-23 --thread I001
+   msgpipe pending kakao --start 2026-06-01 --end 2026-07-23 --thread K001
+   msgpipe pending imessage --start 2026-06-01 --end 2026-07-23 --thread I001
    ```
 
-- 모델 입력은 CCT를 기본으로 한다. JSON은 제어면·디버깅에만 사용한다.
-- `schedule`은 날짜와 30분 세션 단위로 시간·화자를 상속한다. 원문에 가까운 검토가 필요할 때만 `--profile exact`를 사용한다.
-- 스레드가 목표 컨텍스트보다 크면 날짜 또는 세션 경계에서 나누고, 직전 파트의 파생 요약만 다음 파트에 전달한다. 같은 state를 사용해 별칭을 유지한다.
-
-## 분석 실행
-
-사용자가 분석을 명시한 뒤에만 수행한다.
-
-1. `msgpipe cct-spec`의 범례와 `msgpipe context get global`의 최신 중앙 맥락을 읽는다. 중앙 맥락이 없으면 빈 상태로 시작한다.
-2. 각 분석 작업에는 범례, 중앙 맥락, 단일 스레드 CCT만 넣는다. 기본 분석 모델은 `gpt-5.6-terra`, reasoning effort는 `medium`이다.
-3. 스레드별로 새 분석 컨텍스트를 사용한다. 병렬화하더라도 원문을 스레드 사이에 공유하지 않는다.
-4. 결과는 JSON보다 다음처럼 짧은 키-값 형식으로 받는다.
+4. 모델 입력에는 CCT 범례, 최신 전역 rollup, 해당 스레드의 최신 rollup, 이번 pending CCT만 넣는다. 기본 모델은 `gpt-5.6-terra`, reasoning effort는 `medium`이다. 스레드마다 새 분석 컨텍스트를 사용한다.
+5. 세션별 결과는 다음처럼 짧게 만든다.
 
    ```text
-   candidate: yes|no
-   when: <일시 또는 미정>
-   action: <일정·할 일>
-   evidence: <짧은 근거>
-   confidence: high|medium|low
+   summary: <세션 핵심>
+   important: <결정·약속·변화>
+   open: <미결 항목>
+   schedule: <일정 후보 또는 없음>
    ```
 
-5. 원문이 아닌 파생 요약만 append-only context에 저장한다.
+6. 분석이 성공한 뒤 각 CCT `S` 세션을 별도로 저장한다. `--start`는 해당 `S`, `--end`는 다음 `S`의 시각이며 마지막 세션은 요청 범위의 끝이다. 이 커밋은 그 구간에서 실제로 CCT로 제시된 pending 메시지만 분석 완료로 연결한다.
 
    ```bash
-   printf '%s' '<thread summary>' | msgpipe context put thread \
-     --thread K001 --start 2026-06-01 --end 2026-07-23
-   printf '%s' '<global summary>' | msgpipe context put global \
+   printf '%s' '<session summary>' | msgpipe context put session \
+     --thread K001 --start 2026-07-10T09:00:00+09:00 --end 2026-07-10T11:30:00+09:00
+   ```
+
+   schedule 최적화 결과에 메시지 행이 하나도 없으면 모델을 호출하지 않는다. 대신 실제 `pending` 요청 범위를 `정보성 내용 없음` 같은 짧은 세션 요약으로 커밋하고 `--model msgpipe-optimizer --reasoning-effort none`을 기록해 무의미 반응이 계속 pending으로 남지 않게 한다.
+
+7. 한 스레드의 세션 커밋이 끝나면 미반영 세션 요약을 CTX로 읽는다. 출력이 비어 있으면 thread rollup 작업은 없다. 기존 thread rollup과 CTX의 세션 요약들만 합쳐 새 누적 thread rollup을 만들고, 헤더의 `through`를 저장 명령에 그대로 쓴다. 과거 원문은 사용하지 않는다.
+
+   ```bash
+   msgpipe context inputs thread --thread K001
+   printf '%s' '<cumulative thread summary>' | msgpipe context put thread \
+     --thread K001 --through-context-id 42 \
      --start 2026-06-01 --end 2026-07-23
    ```
 
-6. 일정 후보가 확인된 결과만 로컬 identity map으로 해석한다.
+8. 모든 스레드가 끝난 뒤 `context inputs global`을 읽는다. 출력이 비어 있으면 global rollup 작업은 없다. 기존 global rollup과 CTX에 나온 별칭별 최신 thread rollup만 합쳐 관계 변화·결정·미결 항목의 새 중앙 rollup을 저장한다. 중간 thread 버전, 원문이나 전체 session 이력을 다시 넣지 않는다.
 
    ```bash
-   msgpipe identities K001
+   msgpipe context inputs global
+   printf '%s' '<global summary>' | msgpipe context put global \
+     --through-context-id 51 --start 2026-06-01 --end 2026-07-23
    ```
 
-이름 해석은 최종 사용자 출력용이며 분석 모델 입력용이 아니다. context에는 원문 대화를 복사하지 말고 결정·미결 항목·관계 맥락만 간결하게 남긴다.
+`context put session`이 성공하기 전에는 메시지가 pending에서 빠지지 않는다. 분석이 실패하면 같은 `pending`을 다시 만들 수 있다. `thread`·`global`은 교체가 아니라 append-only 버전이며 `context get`은 최신 버전을 반환한다. rollup 전에 중단된 session/thread 요약은 연결되지 않은 채 다음 `context inputs`에 다시 나타난다. `through` 출력 뒤 생긴 더 큰 ID도 다음 실행에 남는다. 이미 session 요약에 연결된 과거 원문은 다음 모델 입력에 재첨부하지 않고, 수정·추가되어 pending으로 돌아온 메시지만 다시 분석한다.
+
+일정 후보를 사용자에게 보여줄 때만 다음처럼 이름을 복원한다.
+
+```bash
+msgpipe identities K001
+```

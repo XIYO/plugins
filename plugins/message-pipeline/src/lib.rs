@@ -1,3 +1,4 @@
+pub mod archive;
 pub mod benchmark;
 pub mod command;
 pub mod export;
