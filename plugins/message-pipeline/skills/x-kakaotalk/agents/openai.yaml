@@ -1,4 +1,0 @@
-interface:
-  display_name: "카카오톡 Mac 읽기"
-  short_description: "Mac 로컬 카카오톡 DB를 안전하게 읽고 진단"
-  default_prompt: "Use $x-kakaotalk to read my locally cached KakaoTalk messages safely in read-only mode."

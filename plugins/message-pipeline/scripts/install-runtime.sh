@@ -26,9 +26,9 @@ CARGO_TARGET_DIR="$BUILD_DIR" cargo install --path "$PLUGIN_ROOT" --locked --for
 echo "[install:msgpipe:success] Installed msgpipe" >&2
 
 if ! command -v kakaocli >/dev/null 2>&1; then
-  echo "[install:reader:warn] kakaocli is not installed; use the bundled x-kakaotalk skill" >&2
+  echo "[install:reader:warn] kakaocli is not installed; follow the KakaoTalk source reference in the bundled message-pipeline skill" >&2
 fi
 
 if ! command -v imsg >/dev/null 2>&1; then
-  echo "[install:reader:warn] imsg is not installed; use the bundled x-imessage skill" >&2
+  echo "[install:reader:warn] imsg is not installed; follow the iMessage source reference in the bundled message-pipeline skill" >&2
 fi

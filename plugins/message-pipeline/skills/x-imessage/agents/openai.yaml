@@ -1,4 +1,0 @@
-interface:
-  display_name: "iMessage Mac 연동"
-  short_description: "Mac 메시지를 안전하게 조회·검색하고 명시적으로 전송"
-  default_prompt: "Use $x-imessage to safely inspect my local Messages history or send a message only when I explicitly request it."

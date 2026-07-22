@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-이 저장소는 Codex와 Claude Code가 설치할 수 있는 `message-pipeline` marketplace다. 실제 플러그인과 Rust 앱은 `plugins/message-pipeline/` 안에 함께 둔다. 플러그인 설치기는 디렉터리를 캐시로 복사하므로 저장소 밖 파일이나 절대 경로에 의존하지 않는다.
+이 저장소는 Codex와 Claude Code가 설치할 수 있는 XIYO 공개 플러그인 marketplace다. 실제 플러그인과 Rust 앱은 `plugins/message-pipeline/` 안에 함께 둔다. 플러그인 설치기는 디렉터리를 캐시로 복사하므로 저장소 밖 파일이나 절대 경로에 의존하지 않는다.
 
 ## 구조
 
@@ -10,7 +10,8 @@
 plugins/message-pipeline/
 ├── .codex-plugin/plugin.json
 ├── .claude-plugin/plugin.json
-├── skills/                                  번들 스킬
+├── skills/message-pipeline/                 단일 번들 스킬
+│   └── references/                          KakaoTalk·iMessage 소스 문서
 ├── scripts/install-runtime.sh
 └── Cargo.toml                               msgpipe Rust 앱
 ```
@@ -36,13 +37,10 @@ plugins/message-pipeline/
 Rust 명령은 `plugins/message-pipeline/`에서 실행한다.
 
 ```bash
-cargo fmt --all -- --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-targets --all-features
-python3 ../../scripts/check-version-sync.py
-python3 ~/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/x-message-pipeline
+bash scripts/check.sh
+python3 ~/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/message-pipeline
 python3 ~/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .
 claude plugin validate ../..
 ```
 
-실데이터 회귀 검증은 집계 수치와 해시만 출력하며 채팅 본문은 터미널에도 표시하지 않는다.
+`scripts/check.sh`는 임시 `CARGO_TARGET_DIR`를 사용하고 종료 시 제거한다. 플러그인 디렉터리 안에 `target/`을 만든 채로 설치하면 marketplace 캐시에 빌드 산출물까지 복사되므로 금지한다. 실데이터 회귀 검증은 집계 수치와 해시만 출력하며 채팅 본문은 터미널에도 표시하지 않는다.

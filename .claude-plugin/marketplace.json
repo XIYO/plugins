@@ -1,10 +1,10 @@
 {
-  "name": "message-pipeline",
+  "name": "xiyo",
   "owner": {
     "name": "XIYO"
   },
   "metadata": {
-    "description": "XIYO local message processing plugins"
+    "description": "XIYO public plugins for Codex and Claude Code"
   },
   "plugins": [
     {

@@ -1,6 +1,6 @@
 {
   "name": "message-pipeline",
-  "version": "0.1.0+codex.20260722074626",
+  "version": "0.1.0+codex.20260722080147",
   "description": "Read-only KakaoTalk and iMessage extraction, compact CCT export, token benchmarking, and per-thread context workflows.",
   "author": {
     "name": "XIYO",

@@ -1,7 +1,7 @@
 {
-  "name": "personal",
+  "name": "xiyo",
   "interface": {
-    "displayName": "Personal"
+    "displayName": "XIYO Plugins"
   },
   "plugins": [
     {

@@ -1,9 +1,4 @@
----
-name: x-kakaotalk
-description: macOS용 카카오톡의 로컬 SQLCipher 데이터베이스를 Codex·Claude에서 읽기 전용으로 진단하고 조회한다. "카카오톡 DB 읽어줘", "카톡 검색", "최근 카톡 요약", "AI가 카카오톡을 직접 읽게 해줘", kakaocli 설치·인증·오류 해결, Mac 카카오톡 저장 경로·암호화·권한 확인 요청에 사용한다.
----
-
-# 카카오톡 Mac 로컬 읽기
+# KakaoTalk 소스
 
 카카오 공식 API가 제공하지 않는 개인 대화 내역 조회를 Mac에 이미 캐시된 로컬 DB에서 수행한다. 읽기는 UI 자동화 없이 가능하지만, DB는 SQLCipher로 암호화되어 일반 `sqlite3`로 열리지 않는다.
 
@@ -94,7 +89,7 @@ kakaocli schema
 
 ## 대량 추출과 토큰 최적화
 
-여러 채팅방이나 긴 기간을 모델 분석용으로 준비할 때는 `x-message-pipeline`의 `msgpipe`를 사용한다. 이 스킬은 인증·권한·읽기 도구 복구를 담당하고, `msgpipe`가 고정된 읽기 전용 쿼리로 추출한 뒤 공통 정규화·치환·CCT 내보내기를 담당한다.
+여러 채팅방이나 긴 기간을 모델 분석용으로 준비할 때는 이 스킬의 `msgpipe`를 사용한다. 이 문서는 인증·권한·읽기 도구 복구를 설명하고, `msgpipe`는 고정된 읽기 전용 쿼리로 추출한 뒤 공통 정규화·치환·CCT 내보내기를 담당한다.
 
 - 먼저 `msgpipe benchmark kakao`로 본문 없는 토큰 통계를 확인하고, 분석이 승인된 뒤 `msgpipe export kakao --thread K001 ...`처럼 방 하나만 내보낸다.
 - KakaoTalk의 일반 텍스트 `type=1`에도 mention/linkify/bot용 `attachment` JSON이 흔히 존재한다. 값이 있다는 이유만으로 `@file` 또는 `@image`로 치환하지 않는다.
