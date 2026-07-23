@@ -2,121 +2,116 @@
 
 [English](README.md)
 
-Codex와 Claude Code가 macOS의 개인 작업을 검토 가능한 명령줄 도구로 다루게 하는 로컬 우선 플러그인 모음입니다.
+캘린더·미리 알림·KakaoTalk·iMessage 작업을 총괄하는 로컬 우선 macOS 비서를 하나만 설치합니다.
 
-이 저장소는 공개 마켓플레이스입니다. 각 플러그인은 에이전트 스킬, 런타임 소스, 데이터 계약, 설치기, 검증 절차를 함께 담습니다. 설치본은 개인 스킬 저장소나 작성자 컴퓨터의 절대경로에 의존하지 않습니다.
+> **현재 단계:** Preview. Calendar·Reminders 연동은 Preview이고, KakaoTalk·iMessage 기능은 선택형 외부 리더와 로컬 원문 보관소에 의존하므로 Experimental입니다. 안정 버전 전까지 인터페이스와 설정 방식이 달라질 수 있습니다.
 
-> **현재 단계:** Preview. macOS에서 사용할 수 있지만 아직 로컬 런타임을 소스에서 빌드하며, 안정 버전 전까지 인터페이스가 달라질 수 있습니다.
-
-## 플러그인 선택
-
-| 하고 싶은 일 | 설치 ID | 런타임 | 데이터 접근 | 단계 |
-| --- | --- | --- | --- | --- |
-| 화면 자동화 없이 Apple Calendar 관리 | `apple-calendar@xiyo` | `calctl`, `calmeta` | EventKit을 통한 캘린더 읽기·쓰기 | Preview |
-| 새 KakaoTalk·iMessage 내용만 증분 분석 | `message-pipeline@xiyo` | `msgpipe` | 원본 DB 읽기 전용, 보호된 로컬 보관소 쓰기 | Experimental |
-
-`message-pipeline`은 KakaoTalk와 iMessage 소스 리더를 별도로 준비해야 하므로 Experimental로 표시합니다. 공통 원문 보관소, 증분 상태, CCT 출력은 번들된 `msgpipe` 애플리케이션이 담당합니다.
-
-## GitHub에서 설치
+## Sherpa 설치
 
 ### Codex
 
 ```bash
 codex plugin marketplace add XIYO/plugins
-codex plugin add apple-calendar@xiyo
-codex plugin add message-pipeline@xiyo
-codex plugin list
+codex plugin add sherpa@xiyo
 ```
 
 ### Claude Code
 
 ```bash
 claude plugin marketplace add XIYO/plugins
-claude plugin install apple-calendar@xiyo
-claude plugin install message-pipeline@xiyo
+claude plugin install sherpa@xiyo
 ```
 
-새 스킬을 불러오려면 설치 후 새 Codex 작업 또는 Claude Code 세션을 시작합니다.
+설치 후 새 Codex 작업 또는 Claude Code 세션을 시작하면 번들된 모든 스킬을 불러옵니다.
 
-## 선행 조건
+## 설치는 하나, 내부 기능은 전문 모듈
 
-두 플러그인은 현재 macOS만 지원합니다.
+| Sherpa가 총괄하는 기능 | 내부 스킬 | 런타임 | 접근 경계 |
+| --- | --- | --- | --- |
+| Apple Calendar | `apple-calendar` | `calctl`, `calmeta` | 권한 승인 후 EventKit 읽기·쓰기 |
+| Apple Reminders | `apple-reminders` | RemCTL 1.5.1 | iCloud 읽기, EventKit/ReminderKit 쓰기 |
+| KakaoTalk·iMessage | `message-pipeline` | `msgpipe` | 원본 저장소 읽기 전용, 보호된 로컬 보관소 쓰기 |
+| 통합 브리핑·등록 | `sherpa` | 위 전문 모듈 | 범위가 좁은 라우팅과 결과 통합 |
 
-- **Apple Calendar:** Rust 도구 모음과 Xcode Command Line Tools(`swiftc`, `codesign`)가 필요합니다. 첫 사용 시 macOS 표준 권한 창에서 캘린더 접근을 허용합니다.
-- **Message Pipeline:** Rust 도구 모음과 읽기 전용 소스 리더가 필요합니다. KakaoTalk는 `kakaocli`, iMessage는 `imsg`를 사용하며 소스 리더에 전체 디스크 접근 권한이 필요할 수 있습니다.
-- 설치된 런타임을 찾을 수 있도록 `~/.local/bin`과 `~/.cargo/bin`을 `PATH`에 포함합니다.
-
-런타임이 없으면 번들 스킬이 플러그인 내부 설치기를 실행할 수 있습니다. 설치기는 임시 디렉터리에서 빌드하므로 마켓플레이스 캐시에 빌드 결과를 남기지 않습니다.
+플러그인은 설치·제품 단위입니다. 내부 스킬은 분리해 각 데이터 소스의 권한, 검증, 삭제 안전 규칙을 그대로 유지합니다.
 
 ## 첫 사용
 
-새 작업이나 세션에서 다음처럼 요청할 수 있습니다.
+먼저 읽기 전용 진단을 요청합니다.
 
 ```text
-내 Apple Calendar 접근 상태와 사용 가능한 iCloud 캘린더를 확인해줘. 아무것도 변경하지 마.
+셰르파, 캘린더·미리 알림·메시지 분석 준비 상태만 확인해줘. 내 데이터는 변경하거나 출력하지 마.
 ```
 
-```text
-iMessage 소스 리더가 준비됐는지만 확인해줘. 메시지 내용은 출력하거나 분석하지 마.
-```
+Sherpa는 특정 기능을 처음 사용할 때 필요한 런타임만 설치합니다. 번들 설치기의 기본 위치는 `~/.local/bin`이며 `SHERPA_INSTALL_ROOT`로 바꿀 수 있습니다.
 
-런타임을 직접 확인하려면 다음 명령을 사용합니다.
+플러그인 루트에서 직접 설치·진단하려면 다음을 사용합니다.
 
 ```bash
-calctl doctor
-calmeta spec
-msgpipe doctor imessage
-msgpipe doctor kakao
+bash scripts/install-runtime.sh calendar
+bash scripts/install-runtime.sh reminders
+bash scripts/install-runtime.sh messages
+bash scripts/doctor.sh all
 ```
 
-설치 성공과 데이터 권한 허용은 별개입니다. `doctor` 명령은 캘린더나 메시지 내용을 출력하지 않고 실행 파일과 macOS 권한 상태를 알려줍니다.
+### 선행 조건
+
+- macOS 14 이상이 필요합니다. Calendar는 Rust와 Xcode Command Line Tools, Reminders는 Python 3와 Xcode의 Swift·Clang 도구, Message Pipeline은 Rust가 필요합니다. Sherpa 전체 조합은 macOS 26.x에서 검증합니다.
+- Calendar와 Reminders 권한은 각 기능을 처음 사용할 때 해당 어댑터가 요청합니다.
+- RemCTL은 번들 설치기가 고정·검증한 1.5.1 소스 커밋에서 가져옵니다. upstream 설치는 임시 위치에서 수행하고 필요한 구성요소만 복사하며, 일반명 `rctl`·`reminders` 별칭은 만들지 않습니다.
+- `kakaocli`와 `imsg`는 선택형 외부 리더이며 자동 설치하지 않습니다.
+- CLI를 직접 쓰려면 `~/.local/bin`을 `PATH`에 포함합니다.
 
 ## 데이터 경계
 
-- 런타임은 원본 데이터를 스스로 업로드하지 않습니다.
-- 에이전트에 반환한 내용은 호스트 애플리케이션에 설정된 모델 제공자가 처리할 수 있습니다. 먼저 읽기 전용 진단을 요청하고, 분석이나 변경 전에는 선택 범위를 확인합니다.
-- Apple Calendar 쓰기는 EventKit 권한이 필요합니다. 스킬은 수정 전에 대상을 조회하고 반복 일정 변경 범위를 명시합니다.
-- Message Pipeline은 KakaoTalk 또는 Messages 원본 DB를 수정하지 않습니다. 동기화한 원문은 소유자 전용 로컬 SQLite에 저장합니다. 애플리케이션 수준 암호화는 하지 않으므로 FileVault 사용을 권장합니다.
-- 메시지 분석은 미분석 내용만 스레드·화자 별칭과 함께 내보내지만, 선택된 메시지 본문은 설정된 모델 컨텍스트에 들어갑니다.
-- 로그와 버그 제보에는 메시지 본문, 일정 메모, 이름, 연락처, 원본 식별자, 인증 정보, 로컬 DB 경로를 포함하지 않습니다.
+- Calendar 변경은 EventKit으로 실행하고 변경 후 다시 읽어 검증합니다.
+- Reminders 변경은 RemCTL로 실행하며 Sherpa가 Reminders 데이터베이스에 직접 쓰지 않습니다.
+- Message Pipeline은 KakaoTalk·Messages 원본 데이터베이스를 수정하지 않고 메시지를 발송하지 않습니다.
+- 동기화한 메시지 원문은 사용자가 명시적으로 비울 때까지 소유자 전용 로컬 SQLite에 저장합니다. 애플리케이션 수준 암호화는 하지 않으므로 FileVault 사용을 권장합니다.
+- 사용자가 선택해 에이전트에 반환한 내용만 설정된 모델 컨텍스트에 들어갑니다.
+- 로그와 버그 제보에는 메시지 본문, 일정·미리 알림 메모, 이름, 연락처, 인증 정보, 원본 식별자, 로컬 데이터베이스 경로를 넣지 않습니다.
 
-전체 권한·저장 모델은 각 플러그인 README를 확인합니다.
-
-- [Apple Calendar](plugins/apple-calendar/README.md)
-- [Message Pipeline](plugins/message-pipeline/README.md)
+개인 데이터 접근을 허용하기 전에 [Sherpa 전체 안내](plugins/sherpa/README.md)를 확인합니다.
 
 ## 업데이트와 제거
 
-Codex:
+Git 마켓플레이스를 갱신하고 현재 스냅샷을 다시 설치합니다.
 
 ```bash
 codex plugin marketplace upgrade xiyo
-codex plugin add apple-calendar@xiyo
-codex plugin remove apple-calendar@xiyo
+codex plugin add sherpa@xiyo
 ```
 
-Claude Code:
+Sherpa를 제거하기 전에 민감한 메시지 보관소 위치를 확인하고, 필요하면 명시적으로 비웁니다.
 
 ```bash
-claude plugin marketplace update xiyo
-claude plugin update apple-calendar@xiyo
-claude plugin uninstall apple-calendar@xiyo
+~/.local/bin/msgpipe state-path
+~/.local/bin/msgpipe purge --force
+codex plugin remove sherpa@xiyo
 ```
 
-`apple-calendar`를 `message-pipeline`으로 바꾸면 같은 흐름을 사용할 수 있습니다. 플러그인을 제거해도 런타임 실행 파일이나 로컬 애플리케이션 데이터가 자동 삭제되지는 않으므로, 삭제 전 해당 플러그인 README를 확인합니다.
+`purge --force`는 출력된 보관소 경로를 확인한 뒤에만 실행합니다. msgpipe 원문 보관소와 분석 이력을 모두 삭제합니다. 플러그인을 제거해도 관리 런타임, 메시지 보관소, 이후 `remctl onboard`가 만든 설정은 자동으로 지워지지 않습니다. 자세한 범위는 [Sherpa 제거 안내](plugins/sherpa/README.md#update-and-removal)를 확인합니다.
+
+## 호환 플러그인
+
+기존 설치를 갑자기 깨뜨리지 않도록 `apple-calendar@xiyo`와 `message-pipeline@xiyo`는 한시적으로 유지합니다. 신규 사용자는 `sherpa@xiyo`만 설치합니다.
+
+Sherpa와 호환 플러그인을 함께 켜면 스킬 트리거가 겹칠 수 있습니다. 새 작업에서 Sherpa를 검증한 뒤 기존 설치를 제거합니다.
 
 ## 저장소 구조
 
 - `.agents/plugins/marketplace.json`: Codex 마켓플레이스 카탈로그
 - `.claude-plugin/marketplace.json`: Claude Code 마켓플레이스 카탈로그
-- `plugins/<name>/`: 자기완결형 플러그인, 스킬, 런타임, 설치기, 계약, 테스트
-- `scripts/`: 저장소 전체 일관성 검사
+- `plugins/sherpa/`: 정식 자기완결형 플러그인과 내부 전문 스킬
+- `plugins/apple-calendar/`, `plugins/message-pipeline/`: 마이그레이션 기간 호환 패키지
+- `catalog-policy.json`: 정식·호환 패키지 정책
+- `scripts/`: 카탈로그·버전·소스 동기화·저장소 검사
 
-마켓플레이스 매니페스트가 기계 판독 카탈로그의 정본입니다. 위 표는 소비자용 설명이며 CI에서 매니페스트와 일치하는지 검사합니다.
+마켓플레이스 매니페스트가 기계 판독 카탈로그의 정본입니다. CI는 순서, 구성, 번들 스킬, 런타임 고정 버전, 문서 링크, 호환 소스 동기화를 검사합니다.
 
 ## 기여와 지원
 
-Pull Request를 열기 전에 [기여 안내](https://github.com/XIYO/.github/blob/main/CONTRIBUTING.md)를 읽습니다. 버그와 기능 요청은 해당 저장소의 이슈 양식을 사용합니다. 취약점은 [보안 정책](https://github.com/XIYO/.github/blob/main/SECURITY.md)에 따라 비공개로 제보합니다.
+Pull Request를 열기 전에 [기여 안내](https://github.com/XIYO/.github/blob/main/CONTRIBUTING.md)를 읽습니다. 버그와 기능 요청은 이슈 양식을 사용합니다. 취약점은 [보안 정책](https://github.com/XIYO/.github/blob/main/SECURITY.md)에 따라 비공개로 제보합니다.
 
 ## 라이선스
 

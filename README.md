@@ -2,121 +2,116 @@
 
 [한국어](README.ko.md)
 
-Local-first plugins that give Codex and Claude Code inspectable command-line access to personal macOS workflows.
+Install one local-first macOS assistant for Calendar, Reminders, KakaoTalk, and iMessage workflows.
 
-This repository is a public marketplace. Each plugin ships its agent skill, runtime source, data contract, installer, and checks together so an installation does not depend on a private skills repository or an absolute path on the author's machine.
+> **Current stage:** Preview. Calendar and Reminders are preview integrations; the KakaoTalk and iMessage lane is Experimental because it depends on optional third-party readers and stores a local raw archive. Interfaces and setup may change before a stable release.
 
-> **Current stage:** Preview. The plugins are usable on macOS, but they still build local runtimes from source and their interfaces may change before a stable release.
-
-## Choose a plugin
-
-| Goal | Install ID | Runtime | Data access | Stage |
-| --- | --- | --- | --- | --- |
-| Manage Apple Calendar without UI automation | `apple-calendar@xiyo` | `calctl`, `calmeta` | Calendar read and write through EventKit | Preview |
-| Analyze only new KakaoTalk and iMessage content | `message-pipeline@xiyo` | `msgpipe` | Source databases read-only; protected local archive write | Experimental |
-
-`message-pipeline` is marked Experimental because its KakaoTalk and iMessage source readers still require separate setup. The shared archive, incremental state, and CCT export live in the bundled `msgpipe` application.
-
-## Install from GitHub
+## Install Sherpa
 
 ### Codex
 
 ```bash
 codex plugin marketplace add XIYO/plugins
-codex plugin add apple-calendar@xiyo
-codex plugin add message-pipeline@xiyo
-codex plugin list
+codex plugin add sherpa@xiyo
 ```
 
 ### Claude Code
 
 ```bash
 claude plugin marketplace add XIYO/plugins
-claude plugin install apple-calendar@xiyo
-claude plugin install message-pipeline@xiyo
+claude plugin install sherpa@xiyo
 ```
 
-Start a new Codex task or Claude Code session after installation so the new skills are loaded.
+Start a new Codex task or Claude Code session after installation so all bundled skills are loaded.
 
-## Prerequisites
+## One plugin, specialist internals
 
-Both plugins currently support macOS only.
+| What Sherpa coordinates | Internal skill | Runtime | Access boundary |
+| --- | --- | --- | --- |
+| Apple Calendar | `apple-calendar` | `calctl`, `calmeta` | EventKit read/write after permission |
+| Apple Reminders | `apple-reminders` | RemCTL 1.5.1 | iCloud read; EventKit/ReminderKit write |
+| KakaoTalk and iMessage | `message-pipeline` | `msgpipe` | Source stores read-only; protected local archive write |
+| Cross-source briefings and capture | `sherpa` | Specialists above | Bounded routing and combined presentation |
 
-- **Apple Calendar:** Rust toolchain and Xcode Command Line Tools (`swiftc`, `codesign`). The first use asks for Calendar access through the standard macOS permission prompt.
-- **Message Pipeline:** Rust toolchain plus a supported read-only source reader: `kakaocli` for KakaoTalk and `imsg` for iMessage. Full Disk Access may be required by the source reader.
-- Ensure `~/.local/bin` and `~/.cargo/bin` are on `PATH` for the installed runtimes.
-
-The bundled skill can run its plugin-local installer when a runtime is missing. Installers build in a temporary directory and do not write build artifacts into the marketplace cache.
+The plugin is the installation and product boundary. The internal skills remain separate so each data source keeps its own permission, validation, and destructive-action rules.
 
 ## First use
 
-Try one of these prompts in a new task or session:
+Begin with a read-only diagnosis:
 
 ```text
-Check my Apple Calendar access and list the available iCloud calendars. Do not change anything.
+Sherpa, check whether Calendar, Reminders, and message analysis are ready. Do not change or print my data.
 ```
 
-```text
-Check whether the iMessage source reader is ready. Do not print or analyze message content.
-```
+Sherpa installs a missing runtime only when that capability is first used. The bundled installer uses `~/.local/bin` by default and supports `SHERPA_INSTALL_ROOT` as an override.
 
-For a manual runtime check:
+Manual setup and diagnosis from the plugin root:
 
 ```bash
-calctl doctor
-calmeta spec
-msgpipe doctor imessage
-msgpipe doctor kakao
+bash scripts/install-runtime.sh calendar
+bash scripts/install-runtime.sh reminders
+bash scripts/install-runtime.sh messages
+bash scripts/doctor.sh all
 ```
 
-Successful installation is not the same as granted data access. The `doctor` commands report missing executables and macOS permissions without dumping calendar or message content.
+### Prerequisites
+
+- macOS 14 or newer. Calendar requires Rust and Xcode Command Line Tools, Reminders requires Python 3 plus the Swift and Clang tools from Xcode, and Message Pipeline requires Rust. The complete Sherpa stack is tested on macOS 26.x.
+- Calendar and Reminders permissions are requested by their own adapters on first use.
+- RemCTL is fetched from a pinned, verified 1.5.1 source commit by the bundled installer. Sherpa stages the upstream install and copies only the required components; it does not create the generic `rctl` or `reminders` aliases.
+- `kakaocli` and `imsg` are optional external readers. They are not installed automatically.
+- Add `~/.local/bin` to `PATH` for direct CLI use.
 
 ## Data boundaries
 
-- The runtimes do not upload source data by themselves.
-- Content returned to an agent may be processed by the model provider configured in the host application. Request read-only diagnosis first and review the selected scope before asking for analysis or mutation.
-- Apple Calendar writes require EventKit permission. The skill inspects the target before edits and requires explicit scope for recurring changes.
-- Message Pipeline never modifies the KakaoTalk or Messages source database. It stores synchronized raw content in an owner-only local SQLite database; FileVault is recommended because that database is not application-level encrypted.
-- Message analysis exports only pending content with thread and speaker aliases, but the selected message text still enters the configured model context.
-- Logs and bug reports must not contain message bodies, calendar notes, names, contact details, source identifiers, credentials, or local database paths.
+- Calendar changes go through EventKit and are read back after mutation.
+- Reminders changes go through RemCTL. Sherpa never writes directly to the Reminders database.
+- Message Pipeline never modifies KakaoTalk or Messages source databases and never sends messages.
+- Synchronized message text is stored in an owner-only local SQLite archive until the user explicitly purges it. FileVault is recommended because the archive is not application-level encrypted.
+- Only selected content returned to the agent enters the configured model context.
+- Logs and bug reports must not include message bodies, calendar or reminder notes, names, contact details, credentials, source identifiers, or local database paths.
 
-See each plugin README for its complete permission and storage model:
+Read the complete [Sherpa guide](plugins/sherpa/README.md) before enabling private-data access.
 
-- [Apple Calendar](plugins/apple-calendar/README.md)
-- [Message Pipeline](plugins/message-pipeline/README.md)
+## Update and remove
 
-## Update or remove
-
-Codex:
+Refresh the Git marketplace and reinstall the current snapshot:
 
 ```bash
 codex plugin marketplace upgrade xiyo
-codex plugin add apple-calendar@xiyo
-codex plugin remove apple-calendar@xiyo
+codex plugin add sherpa@xiyo
 ```
 
-Claude Code:
+Before removing Sherpa, inspect and optionally purge the sensitive message archive:
 
 ```bash
-claude plugin marketplace update xiyo
-claude plugin update apple-calendar@xiyo
-claude plugin uninstall apple-calendar@xiyo
+~/.local/bin/msgpipe state-path
+~/.local/bin/msgpipe purge --force
+codex plugin remove sherpa@xiyo
 ```
 
-Replacing `apple-calendar` with `message-pipeline` applies the same flow. Removing a plugin does not automatically delete a runtime binary or local application data; review the plugin's own README before deleting either.
+Run `purge --force` only after confirming the printed archive path; it deletes the full msgpipe archive and analysis history. Removing the plugin does not remove managed runtime binaries, the message archive, or configuration created later by `remctl onboard`. See the [Sherpa removal notes](plugins/sherpa/README.md#update-and-removal).
+
+## Compatibility plugins
+
+The original `apple-calendar@xiyo` and `message-pipeline@xiyo` packages remain available temporarily so existing installations do not break. New users should install only `sherpa@xiyo`.
+
+Do not enable Sherpa and a compatibility plugin together because their skill triggers overlap. After verifying Sherpa in a new task, remove the old installations.
 
 ## Repository layout
 
 - `.agents/plugins/marketplace.json`: Codex marketplace catalog
 - `.claude-plugin/marketplace.json`: Claude Code marketplace catalog
-- `plugins/<name>/`: self-contained plugin, skill, runtime, installer, contracts, and tests
-- `scripts/`: repository-wide consistency checks
+- `plugins/sherpa/`: primary self-contained plugin and its specialist skills
+- `plugins/apple-calendar/`, `plugins/message-pipeline/`: compatibility packages during migration
+- `catalog-policy.json`: primary and compatibility-package policy
+- `scripts/`: catalog, version, source-sync, and repository checks
 
-The marketplace manifests are the machine-readable catalog. The table above is consumer-facing documentation and is checked against those manifests.
+The marketplace manifest is the machine-readable catalog. CI verifies its order, membership, bundled skill set, runtime pins, documentation, and compatibility-source synchronization.
 
 ## Contributing and support
 
-Read [CONTRIBUTING.md](https://github.com/XIYO/.github/blob/main/CONTRIBUTING.md) before opening a pull request. Use the affected repository's issue form for bugs and feature requests. Report vulnerabilities privately according to the [security policy](https://github.com/XIYO/.github/blob/main/SECURITY.md).
+Read [CONTRIBUTING.md](https://github.com/XIYO/.github/blob/main/CONTRIBUTING.md) before opening a pull request. Use the issue forms for bugs and feature requests. Report vulnerabilities privately according to the [security policy](https://github.com/XIYO/.github/blob/main/SECURITY.md).
 
 ## License
 

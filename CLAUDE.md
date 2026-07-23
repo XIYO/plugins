@@ -1,6 +1,6 @@
 # Repository guide
 
-이 저장소는 Codex와 Claude Code가 설치할 수 있는 XIYO 공개 플러그인 marketplace다. 실제 플러그인과 런타임은 각 `plugins/<name>/` 안에 함께 둔다. 플러그인 설치기는 디렉터리를 캐시로 복사하므로 저장소 밖 파일이나 절대 경로에 의존하지 않는다.
+이 저장소는 Codex와 Claude Code가 설치할 수 있는 XIYO 공개 플러그인 marketplace다. 소비자용 정식 제품은 `sherpa@xiyo` 하나이며 Calendar·Reminders·Messages 전문 스킬과 런타임을 내부에 함께 둔다. 플러그인 설치기는 디렉터리를 캐시로 복사하므로 저장소 밖 파일이나 절대 경로에 의존하지 않는다.
 
 `CLAUDE.md`가 정본이며 `AGENTS.md`는 이 파일을 가리키는 심볼릭 링크다. 두 파일을 따로 복제해 관리하지 않는다.
 
@@ -8,13 +8,16 @@
 
 - `.agents/plugins/marketplace.json`: Codex 카탈로그 정본
 - `.claude-plugin/marketplace.json`: Claude Code 카탈로그 정본
+- `catalog-policy.json`: 정식 플러그인과 호환 플러그인 구분
 - `plugins/<name>/.codex-plugin/plugin.json`: Codex 플러그인 매니페스트
 - `plugins/<name>/.claude-plugin/plugin.json`: Claude Code 플러그인 매니페스트
 - `plugins/<name>/skills/<name>/SKILL.md`: 에이전트 실행 규칙
 - `plugins/<name>/scripts/install-runtime.sh`: 캐시 내부에서도 동작하는 런타임 설치기
 - `scripts/check-all.sh`: 공개 전 저장소 전체 품질 게이트
 
-플러그인마다 런타임 언어와 세부 디렉터리는 달라도 되지만, 설치본은 항상 자기완결형이어야 한다. 개인 `x-*` 스킬, 저장소 밖 상대경로, 작성자 컴퓨터의 절대경로에 의존하지 않는다.
+Sherpa는 `skills/sherpa`, `skills/apple-calendar`, `skills/apple-reminders`, `skills/message-pipeline`을 모두 포함한다. 플러그인끼리 의존하지 않는다. 설치본은 항상 자기완결형이어야 하며 개인 `x-*` 스킬, 저장소 밖 상대경로, 작성자 컴퓨터의 절대경로에 의존하지 않는다.
+
+`apple-calendar`와 `message-pipeline` 독립 패키지는 마이그레이션 기간의 호환 경로다. 정본 런타임 소스와 달라지지 않도록 `scripts/check-legacy-sync.py`로 검사하고, 신규 기능의 소비자 진입점은 Sherpa만 사용한다.
 
 ## 소비자 문서
 
@@ -34,7 +37,8 @@
 
 ## 버전과 릴리스
 
-- Rust 앱이 있는 플러그인은 plugin manifest와 Cargo package의 기본 SemVer를 함께 갱신한다.
+- 단일 Rust 앱 플러그인은 plugin manifest와 Cargo package의 기본 SemVer를 함께 갱신한다.
+- Sherpa 플러그인 버전과 내부 런타임 버전은 독립적이다. `runtime-versions.json`이 `calmeta`, `calctl`, `msgpipe`, RemCTL 고정 버전의 정본이다.
 - Codex 로컬 재설치용 `+codex.<cachebuster>`는 기본 버전을 바꾸지 않는다.
 - 사용자에게 보이는 변경은 플러그인별 `CHANGELOG.md`의 `Unreleased`에 기록한다.
 - 공개 태그는 `<plugin-name>-v<version>` 형식을 사용한다.

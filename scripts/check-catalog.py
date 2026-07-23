@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sys
+from datetime import date
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -15,6 +16,13 @@ PLUGIN_ROOT = ROOT / "plugins"
 CODEX_MARKETPLACE = ROOT / ".agents" / "plugins" / "marketplace.json"
 CLAUDE_MARKETPLACE = ROOT / ".claude-plugin" / "marketplace.json"
 README_PATHS = (ROOT / "README.md", ROOT / "README.ko.md")
+CATALOG_POLICY = ROOT / "catalog-policy.json"
+SHERPA_REQUIRED_SKILLS = {
+    "sherpa",
+    "apple-calendar",
+    "apple-reminders",
+    "message-pipeline",
+}
 VALID_LOG_LEVELS = {"debug": 10, "info": 20, "warn": 30, "error": 40}
 LOG_LEVEL = VALID_LOG_LEVELS.get(os.getenv("LOG_LEVEL", "warn").lower(), 30)
 
@@ -78,16 +86,63 @@ def validate_plugin(name: str, codex_entry: dict, claude_entry: dict) -> None:
     skill_path = expected_path / "skills" / name / "SKILL.md"
     if not skill_path.is_file():
         fail(f"Skill entry point is missing: {skill_path.relative_to(ROOT)}")
-    frontmatter = skill_path.read_text(encoding="utf-8").split("---", 2)
-    if len(frontmatter) < 3 or not re.search(
-        rf"(?m)^name:\s*{re.escape(name)}\s*$", frontmatter[1]
-    ):
-        fail(f"Skill name mismatch in {skill_path.relative_to(ROOT)}")
+
+    for bundled_skill_path in sorted((expected_path / "skills").glob("*/SKILL.md")):
+        validate_skill(bundled_skill_path)
 
     install_id = f"{name}@xiyo"
     for readme_path in README_PATHS:
         if install_id not in readme_path.read_text(encoding="utf-8"):
             fail(f"{install_id} is missing from {readme_path.name}")
+
+    if name == "sherpa":
+        skill_names = {
+            path.parent.name for path in (expected_path / "skills").glob("*/SKILL.md")
+        }
+        if skill_names != SHERPA_REQUIRED_SKILLS:
+            fail(
+                "Sherpa bundled skill set differs: "
+                f"expected={sorted(SHERPA_REQUIRED_SKILLS)}, actual={sorted(skill_names)}"
+            )
+        required_paths = (
+            expected_path / "LICENSE",
+            expected_path / "runtime-versions.json",
+            expected_path / "scripts" / "install-runtime.sh",
+            expected_path / "scripts" / "doctor.sh",
+            expected_path / "crates" / "calmeta" / "Cargo.toml",
+            expected_path / "crates" / "msgpipe" / "Cargo.toml",
+            expected_path / "runtime" / "calctl" / "calctl.swift",
+            expected_path / "third_party" / "remctl" / "LICENSE",
+        )
+        for required_path in required_paths:
+            if not required_path.is_file():
+                fail(f"Sherpa component is missing: {required_path.relative_to(ROOT)}")
+
+
+def validate_skill(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    frontmatter = text.split("---", 2)
+    if len(frontmatter) < 3:
+        fail(f"Skill frontmatter is missing: {path.relative_to(ROOT)}")
+
+    expected_name = path.parent.name
+    name_match = re.search(r"(?m)^name:\s*([^\n]+?)\s*$", frontmatter[1])
+    description_match = re.search(
+        r"(?m)^description:\s*(.+?)\s*$", frontmatter[1]
+    )
+    if name_match is None or name_match.group(1) != expected_name:
+        fail(f"Skill name mismatch in {path.relative_to(ROOT)}")
+    if description_match is None:
+        fail(f"Skill description is missing in {path.relative_to(ROOT)}")
+    description = description_match.group(1)
+    if len(description) > 1_024:
+        fail(f"Skill description exceeds 1024 characters: {path.relative_to(ROOT)}")
+    if "<" in description or ">" in description:
+        fail(f"Skill description contains angle brackets: {path.relative_to(ROOT)}")
+
+    agent_metadata = path.parent / "agents" / "openai.yaml"
+    if path.parts[-4:-3] == ("sherpa",) and not agent_metadata.is_file():
+        fail(f"Sherpa skill agent metadata is missing: {agent_metadata.relative_to(ROOT)}")
 
 
 def validate_relative_links(path: Path) -> None:
@@ -115,6 +170,35 @@ def main() -> int:
     if codex_names != claude_names:
         fail("Codex and Claude marketplace order or membership differs")
 
+    policy = read_json(CATALOG_POLICY)
+    primary = policy.get("primary")
+    legacy = policy.get("legacy")
+    migration_review_after = policy.get("migrationReviewAfter")
+    if (
+        not isinstance(primary, str)
+        or not isinstance(legacy, list)
+        or not isinstance(migration_review_after, str)
+    ):
+        fail(
+            "catalog-policy.json must define primary, legacy, and migrationReviewAfter"
+        )
+    try:
+        review_date = date.fromisoformat(migration_review_after)
+    except ValueError as error:
+        fail(f"migrationReviewAfter must be an ISO date: {error}")
+    if date.today() >= review_date:
+        fail(
+            "Compatibility review date has arrived; remove, extend, or justify the legacy packages: "
+            f"{migration_review_after}"
+        )
+    if codex_names[0] != primary:
+        fail(f"Primary plugin must be first: expected={primary}, actual={codex_names[0]}")
+    if set(codex_names[1:]) != set(legacy):
+        fail(
+            "Marketplace compatibility entries differ from catalog policy: "
+            f"marketplace={codex_names[1:]}, legacy={legacy}"
+        )
+
     directory_names = sorted(
         path.name for path in PLUGIN_ROOT.iterdir() if path.is_dir()
     )
@@ -129,7 +213,7 @@ def main() -> int:
     for name in codex_names:
         validate_plugin(name, codex_entries[name], claude_entries[name])
 
-    markdown_paths = list(README_PATHS) + sorted(PLUGIN_ROOT.glob("*/README.md"))
+    markdown_paths = list(README_PATHS) + sorted(PLUGIN_ROOT.glob("**/*.md"))
     for markdown_path in markdown_paths:
         validate_relative_links(markdown_path)
 

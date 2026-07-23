@@ -1,0 +1,4 @@
+interface:
+  display_name: "Apple Reminders"
+  short_description: "RemCTL로 Apple 미리 알림 구조와 항목을 안전하게 관리"
+  default_prompt: "Use $apple-reminders to inspect and manage Apple Reminders with stable IDs and verified results."

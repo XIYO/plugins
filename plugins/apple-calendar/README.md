@@ -1,5 +1,7 @@
 # Apple Calendar
 
+> **Compatibility package:** New users should install `sherpa@xiyo`, which includes this Calendar skill and runtime. Keep this package only for an existing installation, and do not enable both packages at once.
+
 A macOS plugin that lets Codex or Claude Code manage Apple Calendar through EventKit and keep structured event notes consistent with a versioned schema.
 
 > **Stage:** Preview · **Platform:** macOS · **Access:** Calendar read and write

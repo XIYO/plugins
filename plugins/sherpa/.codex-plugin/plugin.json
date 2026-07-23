@@ -1,0 +1,40 @@
+{
+  "name": "sherpa",
+  "version": "0.1.0+codex.20260723020853",
+  "description": "Coordinate Apple Calendar, Apple Reminders, KakaoTalk, and iMessage through one local-first macOS assistant.",
+  "author": {
+    "name": "XIYO",
+    "email": "bunny@xiyo.dev",
+    "url": "https://github.com/XIYO"
+  },
+  "homepage": "https://github.com/XIYO/plugins/tree/main/plugins/sherpa",
+  "repository": "https://github.com/XIYO/plugins",
+  "license": "MIT",
+  "keywords": [
+    "personal-assistant",
+    "apple-calendar",
+    "apple-reminders",
+    "kakaotalk",
+    "imessage",
+    "local-first"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Sherpa",
+    "shortDescription": "\uce98\ub9b0\ub354\u00b7\ubbf8\ub9ac \uc54c\ub9bc\u00b7\uba54\uc2dc\uc9c0\ub97c \ud558\ub098\ub85c \uad00\ub9ac",
+    "longDescription": "\ud558\ub098\uc758 \uc124\uce58\ub85c Apple Calendar\uc640 Apple Reminders\ub97c \uad00\ub9ac\ud558\uace0 KakaoTalk\u00b7iMessage\uc758 \uc0c8 \uba54\uc2dc\uc9c0\ub97c \uc77d\uae30 \uc804\uc6a9\uc73c\ub85c \ubd84\uc11d\ud569\ub2c8\ub2e4. \uc170\ub974\ud30c\uac00 \uc694\uccad\uc744 \ubd84\ub958\ud558\uace0 \uc804\ubb38 \uc2a4\ud0ac\uacfc \ub85c\uceec \ub7f0\ud0c0\uc784\uc5d0 \uc548\uc804\ud558\uac8c \uc704\uc784\ud569\ub2c8\ub2e4.",
+    "developerName": "XIYO",
+    "category": "Productivity",
+    "websiteURL": "https://github.com/XIYO/plugins/tree/main/plugins/sherpa",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Analyze"
+    ],
+    "defaultPrompt": [
+      "\uc624\ub298 \uc77c\uc815\u00b7\ud560 \uc77c\uacfc \uc0c8 \uba54\uc2dc\uc9c0\uc758 \uc561\uc158 \ud6c4\ubcf4\ub97c \ube0c\ub9ac\ud551\ud574\uc918.",
+      "\uc774 \ub0b4\uc6a9\uc744 \uc77c\uc815\uacfc \ud560 \uc77c \uc911 \uc62c\ubc14\ub978 \uacf3\uc5d0 \ub4f1\ub85d\ud574\uc918.",
+      "\uc0c8 \uba54\uc2dc\uc9c0\ub9cc \uc77d\uace0 \uc57d\uc18d\u00b7\ud560 \uc77c \ud6c4\ubcf4\ub97c \uc815\ub9ac\ud574\uc918."
+    ]
+  }
+}

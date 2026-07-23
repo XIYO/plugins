@@ -1,6 +1,6 @@
 {
   "name": "message-pipeline",
-  "version": "0.2.0+codex.20260723001449",
+  "version": "0.2.1+codex.20260723020424",
   "description": "Sync KakaoTalk and iMessage read-only, archive locally, and analyze only unprocessed messages.",
   "author": {
     "name": "XIYO",

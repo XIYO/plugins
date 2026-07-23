@@ -17,11 +17,7 @@ def read_json(path: Path) -> dict:
 
 
 def check_plugin(plugin: Path) -> bool:
-    with (plugin / "Cargo.toml").open("rb") as handle:
-        cargo_version = tomllib.load(handle)["package"]["version"]
-
     versions = {
-        "Cargo.toml": cargo_version,
         ".codex-plugin/plugin.json": read_json(
             plugin / ".codex-plugin" / "plugin.json"
         )["version"],
@@ -29,6 +25,14 @@ def check_plugin(plugin: Path) -> bool:
             plugin / ".claude-plugin" / "plugin.json"
         )["version"],
     }
+
+    cargo_path = plugin / "Cargo.toml"
+    if cargo_path.is_file():
+        with cargo_path.open("rb") as handle:
+            cargo_document = tomllib.load(handle)
+        package = cargo_document.get("package")
+        if isinstance(package, dict) and isinstance(package.get("version"), str):
+            versions["Cargo.toml"] = package["version"]
 
     base_versions = {source: version.split("+", 1)[0] for source, version in versions.items()}
 
@@ -42,14 +46,21 @@ def check_plugin(plugin: Path) -> bool:
         return False
 
     print(
-        f"[release:version:success] plugin={plugin.name} base-version={cargo_version}"
+        f"[release:version:success] plugin={plugin.name} "
+        f"base-version={next(iter(base_versions.values()))}"
     )
     return True
 
 
 def check_swift_adapter(plugin: Path) -> bool:
-    source_path = plugin / "runtime" / "calctl.swift"
-    plist_path = plugin / "runtime" / "Info.plist"
+    direct_runtime = plugin / "runtime"
+    nested_runtime = direct_runtime / "calctl"
+    if (nested_runtime / "calctl.swift").exists() or (nested_runtime / "Info.plist").exists():
+        source_path = nested_runtime / "calctl.swift"
+        plist_path = nested_runtime / "Info.plist"
+    else:
+        source_path = direct_runtime / "calctl.swift"
+        plist_path = direct_runtime / "Info.plist"
     if not source_path.exists() and not plist_path.exists():
         return True
     if not source_path.exists() or not plist_path.exists():
@@ -76,8 +87,8 @@ def check_swift_adapter(plugin: Path) -> bool:
             f"[release:adapter-version:error] calctl version mismatch: {plugin.name}",
             file=sys.stderr,
         )
-        print(f"  runtime/calctl.swift: {source_version}", file=sys.stderr)
-        print(f"  runtime/Info.plist: {plist_version}", file=sys.stderr)
+        print(f"  {source_path.relative_to(plugin)}: {source_version}", file=sys.stderr)
+        print(f"  {plist_path.relative_to(plugin)}: {plist_version}", file=sys.stderr)
         return False
 
     print(
@@ -87,15 +98,100 @@ def check_swift_adapter(plugin: Path) -> bool:
     return True
 
 
+def read_cargo_version(path: Path) -> str:
+    with path.open("rb") as handle:
+        document = tomllib.load(handle)
+    return document["package"]["version"]
+
+
+def check_sherpa_runtime_versions(plugin: Path) -> bool:
+    versions_path = plugin / "runtime-versions.json"
+    if not versions_path.is_file():
+        return True
+
+    declared = read_json(versions_path)
+    actual = {
+        "plugin": read_json(plugin / ".claude-plugin" / "plugin.json")["version"],
+        "calmeta": read_cargo_version(plugin / "crates" / "calmeta" / "Cargo.toml"),
+        "msgpipe": read_cargo_version(plugin / "crates" / "msgpipe" / "Cargo.toml"),
+    }
+
+    swift_source = (plugin / "runtime" / "calctl" / "calctl.swift").read_text(
+        encoding="utf-8"
+    )
+    swift_match = re.search(r'private let calctlVersion = "([^"]+)"', swift_source)
+    if swift_match is None:
+        print("[release:runtime-version:error] Sherpa calctlVersion is missing", file=sys.stderr)
+        return False
+    actual["calctl"] = swift_match.group(1)
+
+    failures: list[str] = []
+    for name, actual_version in actual.items():
+        declared_version = declared.get(name)
+        if declared_version != actual_version:
+            failures.append(
+                f"{name}: declared={declared_version} actual={actual_version}"
+            )
+
+    remctl = declared.get("remctl")
+    if not isinstance(remctl, dict):
+        failures.append("remctl: runtime declaration is missing")
+    else:
+        installer = (plugin / "scripts" / "install-runtime.sh").read_text(
+            encoding="utf-8"
+        )
+        doctor = (plugin / "scripts" / "doctor.sh").read_text(encoding="utf-8")
+        expected_installer_values = {
+            "calmeta": f'CALMETA_VERSION="{declared.get("calmeta")}"',
+            "calctl": f'CALCTL_VERSION="{declared.get("calctl")}"',
+            "msgpipe": f'MSGPIPE_VERSION="{declared.get("msgpipe")}"',
+            "version": f'REMCTL_TAG="v{remctl.get("version")}"',
+            "gitCommit": f'REMCTL_COMMIT="{remctl.get("gitCommit")}"',
+            "source": f'REMCTL_SOURCE="{remctl.get("source")}"',
+        }
+        for field, shell_value in expected_installer_values.items():
+            if shell_value not in installer:
+                failures.append(f"{field}: installer pin differs")
+
+        expected_doctor_values = {
+            "calmeta": f'CALMETA_VERSION="{declared.get("calmeta")}"',
+            "calctl": f'CALCTL_VERSION="{declared.get("calctl")}"',
+            "msgpipe": f'MSGPIPE_VERSION="{declared.get("msgpipe")}"',
+            "remctl.version": f'REMCTL_VERSION="{remctl.get("version")}"',
+            "remctl.gitCommit": f'REMCTL_COMMIT="{remctl.get("gitCommit")}"',
+            "remctl.source": f'REMCTL_SOURCE="{remctl.get("source")}"',
+        }
+        for field, shell_value in expected_doctor_values.items():
+            if shell_value not in doctor:
+                failures.append(f"{field}: doctor pin differs")
+
+    if failures:
+        print("[release:runtime-version:error] Sherpa runtime mismatch", file=sys.stderr)
+        for failure in failures:
+            print(f"  {failure}", file=sys.stderr)
+        return False
+
+    print(
+        "[release:runtime-version:success] "
+        f"plugin={plugin.name} calmeta={actual['calmeta']} calctl={actual['calctl']} "
+        f"msgpipe={actual['msgpipe']} remctl={remctl['version']}"
+    )
+    return True
+
+
 def main() -> int:
     plugins = sorted(
-        path.parent for path in (ROOT / "plugins").glob("*/Cargo.toml")
+        path.parent.parent
+        for path in (ROOT / "plugins").glob("*/.codex-plugin/plugin.json")
     )
     if not plugins:
         print("[release:version:error] No Rust plugins found", file=sys.stderr)
         return 1
     results = [
-        check_plugin(plugin) and check_swift_adapter(plugin) for plugin in plugins
+        check_plugin(plugin)
+        and check_swift_adapter(plugin)
+        and check_sherpa_runtime_versions(plugin)
+        for plugin in plugins
     ]
     return 0 if all(results) else 1
 

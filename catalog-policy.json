@@ -1,0 +1,8 @@
+{
+  "primary": "sherpa",
+  "legacy": [
+    "apple-calendar",
+    "message-pipeline"
+  ],
+  "migrationReviewAfter": "2026-10-21"
+}

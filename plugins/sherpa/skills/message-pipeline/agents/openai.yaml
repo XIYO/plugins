@@ -1,0 +1,4 @@
+interface:
+  display_name: "Message Pipeline"
+  short_description: "카카오톡·iMessage 원문을 로컬 보관하고 증분 분석"
+  default_prompt: "Use $message-pipeline to sync local messages, analyze only pending threads, and maintain recoverable session, thread, and global rollups."

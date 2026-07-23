@@ -1,0 +1,13 @@
+{
+  "name": "sherpa",
+  "version": "0.1.0",
+  "description": "Coordinate Apple Calendar, Apple Reminders, KakaoTalk, and iMessage through one local-first macOS assistant",
+  "author": {
+    "name": "XIYO",
+    "email": "bunny@xiyo.dev"
+  },
+  "homepage": "https://github.com/XIYO/plugins/tree/main/plugins/sherpa",
+  "repository": "https://github.com/XIYO/plugins",
+  "license": "MIT",
+  "keywords": ["personal-assistant", "apple-calendar", "apple-reminders", "kakaotalk", "imessage", "local-first"]
+}
