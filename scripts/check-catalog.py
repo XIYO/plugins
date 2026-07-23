@@ -19,9 +19,8 @@ README_PATHS = (ROOT / "README.md", ROOT / "README.ko.md")
 CATALOG_POLICY = ROOT / "catalog-policy.json"
 SHERPA_REQUIRED_SKILLS = {
     "sherpa",
-    "apple-calendar",
-    "apple-reminders",
-    "message-pipeline",
+    "context",
+    "planner",
 }
 VALID_LOG_LEVELS = {"debug": 10, "info": 20, "warn": 30, "error": 40}
 LOG_LEVEL = VALID_LOG_LEVELS.get(os.getenv("LOG_LEVEL", "warn").lower(), 30)
@@ -109,6 +108,7 @@ def validate_plugin(name: str, codex_entry: dict, claude_entry: dict) -> None:
             expected_path / "runtime-versions.json",
             expected_path / "scripts" / "install-runtime.sh",
             expected_path / "scripts" / "doctor.sh",
+            expected_path / "crates" / "sherpa" / "Cargo.toml",
             expected_path / "crates" / "calmeta" / "Cargo.toml",
             expected_path / "crates" / "msgpipe" / "Cargo.toml",
             expected_path / "runtime" / "calctl" / "calctl.swift",

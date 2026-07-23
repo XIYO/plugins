@@ -1,5 +1,6 @@
 {
   "plugin": "0.1.0",
+  "sherpa": "0.1.0",
   "calmeta": "0.1.0",
   "calctl": "0.1.2",
   "msgpipe": "0.2.1",

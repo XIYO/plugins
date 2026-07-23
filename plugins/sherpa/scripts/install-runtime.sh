@@ -14,6 +14,7 @@ REMCTL_SOURCE="https://github.com/viticci/remctl.git"
 CALMETA_VERSION="0.1.0"
 CALCTL_VERSION="0.1.2"
 MSGPIPE_VERSION="0.2.1"
+SHERPA_VERSION="0.1.0"
 
 cleanup() {
   case "$BUILD_ROOT" in
@@ -25,7 +26,7 @@ cleanup() {
 trap cleanup EXIT
 
 usage() {
-  echo "Usage: $0 <calendar|reminders|messages|all>" >&2
+  echo "Usage: $0 <context|planner|all>" >&2
 }
 
 verify_version() {
@@ -93,6 +94,19 @@ install_calendar() {
   verify_version "$INSTALL_ROOT/bin/calmeta" "$CALMETA_VERSION" "calendar"
   verify_version "$INSTALL_ROOT/bin/calctl" "$CALCTL_VERSION" "calendar"
   echo "[install:calendar:success] Installed calmeta and calctl under $INSTALL_ROOT/bin" >&2
+}
+
+install_sherpa() {
+  require_command cargo
+
+  echo "[install:sherpa:start] Installing the unified Sherpa interface" >&2
+  CARGO_TARGET_DIR="$BUILD_ROOT/sherpa-cargo" cargo install \
+    --path "$PLUGIN_ROOT/crates/sherpa" \
+    --locked \
+    --force \
+    --root "$INSTALL_ROOT"
+  verify_version "$INSTALL_ROOT/bin/sherpa" "$SHERPA_VERSION" "sherpa"
+  echo "[install:sherpa:success] Installed the unified interface under $INSTALL_ROOT/bin" >&2
 }
 
 install_reminders() {
@@ -199,24 +213,29 @@ install_reminders() {
   echo "[install:reminders:notice] No rctl/reminders aliases or shell configuration were installed" >&2
 }
 
-install_messages() {
+install_context_engine() {
   require_command cargo
 
-  echo "[install:messages:start] Installing msgpipe" >&2
-  CARGO_TARGET_DIR="$BUILD_ROOT/messages-cargo" cargo install \
+  echo "[install:context:start] Installing the context engine" >&2
+  CARGO_TARGET_DIR="$BUILD_ROOT/context-cargo" cargo install \
     --path "$PLUGIN_ROOT/crates/msgpipe" \
     --locked \
     --force \
     --root "$INSTALL_ROOT"
-  verify_version "$INSTALL_ROOT/bin/msgpipe" "$MSGPIPE_VERSION" "messages"
-  echo "[install:messages:success] Installed msgpipe under $INSTALL_ROOT/bin" >&2
+  verify_version "$INSTALL_ROOT/bin/msgpipe" "$MSGPIPE_VERSION" "context"
+  echo "[install:context:success] Installed the internal context engine" >&2
 
   if ! command -v kakaocli >/dev/null 2>&1; then
-    echo "[install:messages:reader:warn] kakaocli is optional and was not installed" >&2
+    echo "[install:context:source:warn] kakaocli is optional and was not installed" >&2
   fi
   if ! command -v imsg >/dev/null 2>&1; then
-    echo "[install:messages:reader:warn] imsg is optional and was not installed" >&2
+    echo "[install:context:source:warn] imsg is optional and was not installed" >&2
   fi
+}
+
+install_planner() {
+  install_calendar
+  install_reminders
 }
 
 if [ "$COMPONENT" = "--help" ] || [ "$COMPONENT" = "-h" ]; then
@@ -230,13 +249,31 @@ if [ "$(uname -s)" != "Darwin" ]; then
 fi
 
 case "$COMPONENT" in
-  calendar) install_calendar ;;
-  reminders) install_reminders ;;
-  messages) install_messages ;;
+  context)
+    install_sherpa
+    install_context_engine
+    ;;
+  planner)
+    install_sherpa
+    install_planner
+    ;;
   all)
+    install_sherpa
+    install_context_engine
+    install_planner
+    ;;
+  # Compatibility aliases for installations created before the domain migration.
+  calendar)
+    install_sherpa
     install_calendar
+    ;;
+  reminders)
+    install_sherpa
     install_reminders
-    install_messages
+    ;;
+  messages)
+    install_sherpa
+    install_context_engine
     ;;
   *)
     usage

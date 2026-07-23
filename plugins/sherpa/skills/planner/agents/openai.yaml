@@ -1,0 +1,4 @@
+interface:
+  display_name: "Planner"
+  short_description: "일정과 할 일을 올바른 Apple 저장소에서 관리"
+  default_prompt: "Use $planner to organize my events and tasks in Apple Calendar and Reminders."

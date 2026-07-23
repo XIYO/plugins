@@ -341,7 +341,7 @@ fn run_state_path(args: StatePathArgs) -> Result<()> {
 
 fn run_purge(args: PurgeArgs) -> Result<()> {
     if !args.force {
-        anyhow::bail!("purge requires --force after reviewing `msgpipe state-path`")
+        anyhow::bail!("purge requires --force after reviewing `sherpa context state-path`")
     }
     let state_path = args.state.unwrap_or(StateStore::default_path()?);
     let report = StateStore::purge(&state_path)?;
@@ -608,7 +608,9 @@ fn load_archive(args: &PipelineArgs, pending_only: bool) -> Result<PreparedPipel
         pending_only,
     })?;
     if messages.is_empty() && !pending_only {
-        anyhow::bail!("archive has no messages for the selected range; run msgpipe sync first")
+        anyhow::bail!(
+            "archive has no messages for the selected range; run `sherpa context sync` first"
+        )
     }
     Ok(PreparedPipeline { timezone, messages })
 }

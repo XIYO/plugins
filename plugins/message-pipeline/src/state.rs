@@ -99,9 +99,17 @@ pub struct StateStore {
 
 impl StateStore {
     pub fn default_path() -> Result<PathBuf> {
-        let project = ProjectDirs::from("dev", "XIYO", "msgpipe")
+        let project = ProjectDirs::from("dev", "XIYO", "sherpa")
             .context("unable to resolve the local application data directory")?;
-        Ok(project.data_local_dir().join("state.sqlite3"))
+        let canonical = project.data_local_dir().join("context/state.sqlite3");
+        let legacy = ProjectDirs::from("dev", "XIYO", "msgpipe")
+            .context("unable to resolve the legacy local application data directory")?
+            .data_local_dir()
+            .join("state.sqlite3");
+        if !canonical.exists() && legacy.exists() {
+            return Ok(legacy);
+        }
+        Ok(canonical)
     }
 
     pub fn open(path: &Path) -> Result<Self> {

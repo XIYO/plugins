@@ -25,11 +25,13 @@ Rust `1.97.1`, macOS, SQLite bundled 빌드를 기준으로 한다. 실데이터
 
 ## 추적성 방식
 
-- `TEST-UNIT-PIPE-001` -> `AC-PIPE-001`: CCT/별칭/변환 단위 테스트
-- `TEST-INT-PIPE-001` -> `AC-PIPE-001`: fixture 기반 양쪽 소스 통합 테스트
-- `TEST-SEC-PIPE-001` -> `NFR-PRI-001`~`003`, `NFR-SEC-001`~`002`, `FR-PIPE-ARCHIVE-004`: 상태 파일 권한, 공유 상위 폴더 무변경 거부, 확인형 purge 범위, 원문 로컬 한정과 로그 비노출 검증
-- `TEST-STATE-PIPE-001` -> `FR-PIPE-ARCHIVE-001`~`003`, `FR-PIPE-CONTEXT-002`~`004`, `NFR-REL-002`~`003`: 멱등 sync, 변경 시 pending 복귀, 제시·세션 coverage·미반영 rollup 상태 검증
-- `TEST-PERF-PIPE-001` -> `NFR-PERF-001`: `o200k_base` 집계와 기준 형식 대비 절감률
+- `TEST-UNIT-CTX-001` -> `AC-CTX-001`: CCT/별칭/변환 단위 테스트
+- `TEST-INT-CTX-001` -> `AC-CTX-001`: fixture 기반 양쪽 소스 통합 테스트
+- `TEST-SEC-CTX-001` -> `NFR-PRI-001`~`003`, `NFR-SEC-001`~`002`, `FR-CTX-ARCHIVE-004`: 상태 파일 권한, 공유 상위 폴더 무변경 거부, 확인형 purge 범위, 원문 로컬 한정과 로그 비노출 검증
+- `TEST-STATE-CTX-001` -> `FR-CTX-ARCHIVE-001`~`003`, `FR-CTX-SUMMARY-002`~`004`, `NFR-REL-002`~`003`: 멱등 sync, 변경 시 pending 복귀, 제시·세션 coverage·미반영 rollup 상태 검증
+- `TEST-REPLY-CTX-001` -> `FR-CTX-REPLY-001`~`002`: 정확한 대화 해석, 본문·대상 결합, 만료, 취소, 일회성 승인과 비공개 파일 권한 검증
+- `TEST-CLI-SHERPA-001` -> `BR-SHERPA-004`: Context와 Planner 공개 명령이 단일 `sherpa` 인터페이스를 통과하는지 검증
+- `TEST-PERF-CTX-001` -> `NFR-PERF-001`: `o200k_base` 집계와 기준 형식 대비 절감률
 
 ## 리포팅
 
@@ -39,4 +41,4 @@ CI와 로컬 명령은 테스트 이름, 건수, 시간만 출력한다. 실패 
 
 **상위** — [README](README.md) · [ARCHITECTURE](ARCHITECTURE.md) · [REQUIREMENTS](REQUIREMENTS.md)
 
-**설계** — [DESIGN-PIPE](docs/design/pipeline/DESIGN.md)
+**설계** — [DESIGN-CTX](docs/design/context/DESIGN.md)

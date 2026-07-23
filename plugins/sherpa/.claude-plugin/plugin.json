@@ -1,7 +1,7 @@
 {
   "name": "sherpa",
   "version": "0.1.0",
-  "description": "Coordinate Apple Calendar, Apple Reminders, message analysis, and confirmation-gated KakaoTalk replies through one local-first macOS assistant",
+  "description": "Collect personal context and connect only confirmed commitments to Apple Calendar and Reminders through one local-first assistant",
   "author": {
     "name": "XIYO",
     "email": "bunny@xiyo.dev"
@@ -9,5 +9,5 @@
   "homepage": "https://github.com/XIYO/plugins/tree/main/plugins/sherpa",
   "repository": "https://github.com/XIYO/plugins",
   "license": "MIT",
-  "keywords": ["personal-assistant", "apple-calendar", "apple-reminders", "kakaotalk", "imessage", "local-first"]
+  "keywords": ["personal-assistant", "context", "planner", "kakaotalk", "imessage", "mail", "local-first"]
 }

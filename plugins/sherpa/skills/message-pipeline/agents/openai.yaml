@@ -1,4 +1,0 @@
-interface:
-  display_name: "Message Pipeline"
-  short_description: "카카오톡·iMessage 분석과 승인형 카카오톡 답장"
-  default_prompt: "Use $message-pipeline to analyze only pending local messages and prepare a confirmation-bound KakaoTalk text reply when I explicitly ask to send one."

@@ -2,9 +2,9 @@
 
 [한국어](README.ko.md)
 
-Install one local-first macOS assistant for Calendar, Reminders, KakaoTalk, and iMessage workflows.
+Install one local-first macOS assistant that collects personal context and turns only confirmed commitments into plans.
 
-> **Current stage:** Preview. Calendar and Reminders are preview integrations; the KakaoTalk and iMessage lane is Experimental because it depends on optional third-party readers and stores a local raw archive. Interfaces and setup may change before a stable release.
+> **Current stage:** Preview. Planner is Preview; Context is Experimental because local message readers and mail connections vary by host.
 
 ## Install Sherpa
 
@@ -22,96 +22,89 @@ claude plugin marketplace add XIYO/plugins
 claude plugin install sherpa@xiyo
 ```
 
-Start a new Codex task or Claude Code session after installation so all bundled skills are loaded.
+Start a new task or session after installation.
 
-## One plugin, specialist internals
+## One product, two domains
 
-| What Sherpa coordinates | Internal skill | Runtime | Access boundary |
-| --- | --- | --- | --- |
-| Apple Calendar | `apple-calendar` | `calctl`, `calmeta` | EventKit read/write after permission |
-| Apple Reminders | `apple-reminders` | RemCTL 1.5.1 | iCloud read; EventKit/ReminderKit write |
-| KakaoTalk and iMessage | `message-pipeline` | `msgpipe`, `kakao-reply.py` | Sources read-only; confirmed KakaoTalk text dispatch |
-| Cross-source briefings and capture | `sherpa` | Specialists above | Bounded routing and combined presentation |
+| Domain | Inputs or destinations | Purpose |
+| --- | --- | --- |
+| Context | KakaoTalk, iMessage, connected mail | Collect, search, review, summarize, and derive PlanningCandidate values |
+| Planner | Apple Calendar, Apple Reminders | Record confirmed commitments as Events or Tasks |
 
-The plugin is the installation and product boundary. The internal skills remain separate so each data source keeps its own permission, validation, and destructive-action rules.
+Sherpa orchestrates `ContextItem -> PlanningCandidate -> Event | Task`. Applications and external tools are adapters, not peer product domains.
+
+The public runtime interface is limited to:
+
+```text
+sherpa context ...
+sherpa planner ...
+```
 
 ## First use
 
-Begin with a read-only diagnosis:
-
 ```text
-Sherpa, check whether Calendar, Reminders, and message analysis are ready. Do not change or print my data.
+Sherpa, check whether Context and Planner are ready. Do not change or print my data.
 ```
 
-Sherpa installs a missing runtime only when that capability is first used. The bundled installer uses `~/.local/bin` by default and supports `SHERPA_INSTALL_ROOT` as an override.
-
-Manual setup and diagnosis from the plugin root:
+Manual setup from the plugin root:
 
 ```bash
-bash scripts/install-runtime.sh calendar
-bash scripts/install-runtime.sh reminders
-bash scripts/install-runtime.sh messages
+bash scripts/install-runtime.sh context
+bash scripts/install-runtime.sh planner
 bash scripts/doctor.sh all
 ```
 
 ### Prerequisites
 
-- macOS 14 or newer. Calendar requires Rust and Xcode Command Line Tools, Reminders requires Python 3 plus the Swift and Clang tools from Xcode, and Message Pipeline requires Rust. The complete Sherpa stack is tested on macOS 26.x.
-- Calendar and Reminders permissions are requested by their own adapters on first use.
-- RemCTL is fetched from a pinned, verified 1.5.1 source commit by the bundled installer. Sherpa stages the upstream install and copies only the required components; it does not create the generic `rctl` or `reminders` aliases.
-- `kakaocli` and `imsg` are optional external tools. They are not installed automatically. KakaoTalk replies require a `kakaocli` build with `send` support and Accessibility permission.
-- Add `~/.local/bin` to `PATH` for direct CLI use.
+- macOS 14 or newer; the full stack is tested on macOS 26.x.
+- Rust and Xcode Command Line Tools for managed runtimes.
+- Calendar, Reminders, Full Disk Access, and Accessibility permissions are requested only by the adapters that need them.
+- Optional `kakaocli` and `imsg` tools are not installed automatically.
+- Mail collection requires a mail app connected to the host.
 
 ## Data boundaries
 
-- Calendar changes go through EventKit and are read back after mutation.
-- Reminders changes go through RemCTL. Sherpa never writes directly to the Reminders database.
-- Message Pipeline never modifies KakaoTalk or Messages source databases. KakaoTalk text dispatch is available only after an exact-target, message-bound preview and explicit confirmation; iMessage sending is unsupported.
-- Synchronized message text is stored in an owner-only local SQLite archive until the user explicitly purges it. FileVault is recommended because the archive is not application-level encrypted.
+- Conversation source databases remain read-only.
+- Selected Context is retained in an owner-only local SQLite archive until explicitly purged.
+- Context findings never write Planner state without owner review.
+- Planner mutations are read back from Apple Calendar or Reminders.
+- KakaoTalk text dispatch requires an exact target, message-bound preview, short-lived token, and explicit confirmation.
+- iMessage and email sending, attachments, reactions, and batch sends are unsupported.
 - Only selected content returned to the agent enters the configured model context.
-- Logs and bug reports must not include message bodies, calendar or reminder notes, names, contact details, credentials, source identifiers, or local database paths.
 
 Read the complete [Sherpa guide](plugins/sherpa/README.md) before enabling private-data access.
 
 ## Update and remove
-
-Refresh the Git marketplace and reinstall the current snapshot:
 
 ```bash
 codex plugin marketplace upgrade xiyo
 codex plugin add sherpa@xiyo
 ```
 
-Before removing Sherpa, inspect and optionally purge the sensitive message archive:
+Before removal, inspect and optionally purge Context state:
 
 ```bash
-~/.local/bin/msgpipe state-path
-~/.local/bin/msgpipe purge --force
+~/.local/bin/sherpa context state-path
+~/.local/bin/sherpa context purge --force
 codex plugin remove sherpa@xiyo
 ```
 
-Run `purge --force` only after confirming the printed archive path; it deletes the full msgpipe archive and analysis history. Removing the plugin does not remove managed runtime binaries, the message archive, or configuration created later by `remctl onboard`. See the [Sherpa removal notes](plugins/sherpa/README.md#update-and-removal).
-
 ## Compatibility plugins
 
-The original `apple-calendar@xiyo` and `message-pipeline@xiyo` packages remain available temporarily so existing installations do not break. New users should install only `sherpa@xiyo`.
-
-Do not enable Sherpa and a compatibility plugin together because their skill triggers overlap. After verifying Sherpa in a new task, remove the old installations.
+`apple-calendar@xiyo` and `message-pipeline@xiyo` remain temporarily available for existing installations. New users install only `sherpa@xiyo`.
 
 ## Repository layout
 
 - `.agents/plugins/marketplace.json`: Codex marketplace catalog
 - `.claude-plugin/marketplace.json`: Claude Code marketplace catalog
-- `plugins/sherpa/`: primary self-contained plugin and its specialist skills
-- `plugins/apple-calendar/`, `plugins/message-pipeline/`: compatibility packages during migration
+- `plugins/sherpa/`: primary self-contained product
+- `plugins/apple-calendar/`, `plugins/message-pipeline/`: temporary compatibility packages
 - `catalog-policy.json`: primary and compatibility-package policy
-- `scripts/`: catalog, version, source-sync, and repository checks
-
-The marketplace manifest is the machine-readable catalog. CI verifies its order, membership, bundled skill set, runtime pins, documentation, and compatibility-source synchronization.
+- `scripts/`: catalog, version, and repository checks
 
 ## Contributing and support
 
-Read [CONTRIBUTING.md](https://github.com/XIYO/.github/blob/main/CONTRIBUTING.md) before opening a pull request. Use the issue forms for bugs and feature requests. Report vulnerabilities privately according to the [security policy](https://github.com/XIYO/.github/blob/main/SECURITY.md).
+Read [CONTRIBUTING.md](https://github.com/XIYO/.github/blob/main/CONTRIBUTING.md) before opening a pull request. Report vulnerabilities privately according to the [security policy](https://github.com/XIYO/.github/blob/main/SECURITY.md).
 
 ## License
 

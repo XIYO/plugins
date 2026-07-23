@@ -1,4 +1,0 @@
-interface:
-  display_name: "Apple Calendar"
-  short_description: "EventKit 일정 관리와 메모 스키마 검증"
-  default_prompt: "Use $apple-calendar to manage my Apple calendars and validate calendar-note metadata."

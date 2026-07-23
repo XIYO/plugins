@@ -15,8 +15,6 @@ LOG_LEVEL = VALID_LOG_LEVELS.get(os.getenv("LOG_LEVEL", "warn").lower(), 30)
 FILE_MAPPINGS = (
     ("plugins/sherpa/crates/calmeta/Cargo.toml", "plugins/apple-calendar/Cargo.toml"),
     ("plugins/sherpa/crates/msgpipe/Cargo.toml", "plugins/message-pipeline/Cargo.toml"),
-    ("plugins/sherpa/REQUIREMENTS.md", "plugins/message-pipeline/REQUIREMENTS.md"),
-    ("plugins/sherpa/TESTING.md", "plugins/message-pipeline/TESTING.md"),
 )
 
 DIRECTORY_MAPPINGS = (
@@ -24,8 +22,6 @@ DIRECTORY_MAPPINGS = (
     ("plugins/sherpa/runtime/calctl", "plugins/apple-calendar/runtime"),
     ("plugins/sherpa/crates/msgpipe/src", "plugins/message-pipeline/src"),
     ("plugins/sherpa/crates/msgpipe/tests", "plugins/message-pipeline/tests"),
-    ("plugins/sherpa/contracts", "plugins/message-pipeline/contracts"),
-    ("plugins/sherpa/docs", "plugins/message-pipeline/docs"),
 )
 
 

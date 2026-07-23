@@ -25,4 +25,4 @@ C|42|K001|summary: 둘째 세션\nopen: 장소 미정
 
 **메시지 입력** — [CCT](../cct/CCT.md)
 
-**설계** — [DESIGN-PIPE](../../docs/design/pipeline/DESIGN.md)
+**설계** — [DESIGN-CTX](../../docs/design/context/DESIGN.md)

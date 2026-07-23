@@ -11,6 +11,7 @@ CALMETA_VERSION="0.1.0"
 CALCTL_VERSION="0.1.2"
 MSGPIPE_VERSION="0.2.1"
 REMCTL_VERSION="1.5.1"
+SHERPA_VERSION="0.1.0"
 REMCTL_COMMIT="eb75c451eab006218204bb78379917f3414fc6e3"
 REMCTL_SOURCE="https://github.com/viticci/remctl.git"
 
@@ -167,58 +168,81 @@ print(f"{int(report.get('"'"'failures'"'"', 0))} {int(report.get('"'"'warnings'"
   echo "[doctor:reminders:success] Reminders capability is ready" >&2
 }
 
-doctor_messages() {
+doctor_context() {
+  local sherpa=""
   local msgpipe=""
+  sherpa="$(resolve_command sherpa)"
   msgpipe="$(resolve_command msgpipe)"
-  echo "[doctor:messages:start] Checking message runtime and optional readers" >&2
-  if [ ! -x "$msgpipe" ]; then
-    echo "[doctor:messages:error] msgpipe is missing; run install-runtime.sh messages" >&2
+  echo "[doctor:context:start] Checking the context runtime and optional sources" >&2
+  if [ ! -x "$sherpa" ] || ! verify_version "$sherpa" "$SHERPA_VERSION" "context"; then
+    echo "[doctor:context:error] sherpa is missing or incompatible; run install-runtime.sh context" >&2
     record_failure
     return
   fi
-  if ! verify_version "$msgpipe" "$MSGPIPE_VERSION" "messages"; then
+  if [ ! -x "$msgpipe" ]; then
+    echo "[doctor:context:error] context engine is missing; run install-runtime.sh context" >&2
+    record_failure
+    return
+  fi
+  if ! verify_version "$msgpipe" "$MSGPIPE_VERSION" "context"; then
     record_failure
     return
   fi
   if command -v fdesetup >/dev/null 2>&1 \
     && ! fdesetup status 2>/dev/null | grep -q 'FileVault is On'; then
-    echo "[doctor:messages:storage:warn] FileVault is not confirmed; local message content has weaker protection at rest" >&2
+    echo "[doctor:context:storage:warn] FileVault is not confirmed; collected context has weaker protection at rest" >&2
   fi
   if "$msgpipe" doctor kakao; then
-    echo "[doctor:messages:kakao:warn] KakaoTalk reader executable detected; authentication and database access are not verified" >&2
+    echo "[doctor:context:kakaotalk:warn] KakaoTalk source detected; authentication and database access are not verified" >&2
     local kakaocli=""
     kakaocli="$(resolve_command kakaocli)"
     if [ -x "$kakaocli" ] && "$kakaocli" help send >/dev/null 2>&1; then
-      echo "[doctor:messages:kakao-send:warn] Confirmation-gated KakaoTalk replies are available; Accessibility and UI dispatch are not verified" >&2
+      echo "[doctor:context:kakaotalk-reply:warn] Confirmation-gated replies are available; Accessibility and UI dispatch are not verified" >&2
     else
-      echo "[doctor:messages:kakao-send:warn] Installed kakaocli does not expose the required send command" >&2
+      echo "[doctor:context:kakaotalk-reply:warn] Installed kakaocli does not expose the required send command" >&2
     fi
   else
-    echo "[doctor:messages:kakao:warn] KakaoTalk reader is not configured" >&2
+    echo "[doctor:context:kakaotalk:warn] KakaoTalk source is not configured" >&2
   fi
   if "$msgpipe" doctor imessage; then
-    echo "[doctor:messages:imessage:warn] iMessage reader executable detected; Full Disk Access and database reads are not verified" >&2
+    echo "[doctor:context:imessage:warn] iMessage source detected; Full Disk Access and database reads are not verified" >&2
   else
-    echo "[doctor:messages:imessage:warn] iMessage reader is not configured" >&2
+    echo "[doctor:context:imessage:warn] iMessage source is not configured" >&2
   fi
-  echo "[doctor:messages:success] msgpipe runtime is ready" >&2
+  echo "[doctor:context:success] Context capability is ready" >&2
+}
+
+doctor_planner() {
+  local sherpa=""
+  sherpa="$(resolve_command sherpa)"
+  echo "[doctor:planner:start] Checking Planner and Apple adapters" >&2
+  if [ ! -x "$sherpa" ] || ! verify_version "$sherpa" "$SHERPA_VERSION" "planner"; then
+    echo "[doctor:planner:error] sherpa is missing or incompatible; run install-runtime.sh planner" >&2
+    record_failure
+    return
+  fi
+  doctor_calendar
+  doctor_reminders
+  echo "[doctor:planner:success] Planner checks completed" >&2
 }
 
 case "$COMPONENT" in
   -h|--help)
-    echo "Usage: $0 <calendar|reminders|messages|all>" >&2
+    echo "Usage: $0 <context|planner|all>" >&2
     exit 0
     ;;
+  context) doctor_context ;;
+  planner) doctor_planner ;;
+  # Compatibility aliases for installations created before the domain migration.
   calendar) doctor_calendar ;;
   reminders) doctor_reminders ;;
-  messages) doctor_messages ;;
+  messages) doctor_context ;;
   all)
-    doctor_calendar
-    doctor_reminders
-    doctor_messages
+    doctor_context
+    doctor_planner
     ;;
   *)
-    echo "Usage: $0 <calendar|reminders|messages|all>" >&2
+    echo "Usage: $0 <context|planner|all>" >&2
     exit 2
     ;;
 esac

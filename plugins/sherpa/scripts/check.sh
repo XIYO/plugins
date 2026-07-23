@@ -35,16 +35,17 @@ echo "[check:sherpa:swift:success] EventKit adapter passed" >&2
 bash -n scripts/install-runtime.sh scripts/doctor.sh scripts/check.sh
 bash scripts/install-runtime.sh --help >/dev/null
 bash scripts/doctor.sh --help >/dev/null
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
-python3 scripts/kakao-reply.py --help >/dev/null
 
 echo "[check:sherpa:install:start] Smoke-testing all managed runtimes in an isolated root" >&2
 SMOKE_INSTALL_ROOT="$CHECK_TARGET_DIR/install-root"
 SHERPA_INSTALL_ROOT="$SMOKE_INSTALL_ROOT" bash scripts/install-runtime.sh all
+test "$("$SMOKE_INSTALL_ROOT/bin/sherpa" --version)" = "sherpa 0.1.0"
 test "$("$SMOKE_INSTALL_ROOT/bin/calctl" --version)" = "0.1.2"
 test "$("$SMOKE_INSTALL_ROOT/bin/calmeta" --version)" = "calmeta 0.1.0"
 test "$("$SMOKE_INSTALL_ROOT/bin/msgpipe" --version)" = "msgpipe 0.2.1"
 test "$("$SMOKE_INSTALL_ROOT/bin/remctl" --version)" = "1.5.1"
+"$SMOKE_INSTALL_ROOT/bin/sherpa" context cct-spec >/dev/null
+"$SMOKE_INSTALL_ROOT/bin/sherpa" planner metadata spec >/dev/null
 test -f "$SMOKE_INSTALL_ROOT/share/sherpa/remctl.provenance"
 cmp -s \
   "$SMOKE_INSTALL_ROOT/share/licenses/sherpa/remctl/LICENSE" \

@@ -112,6 +112,7 @@ def check_sherpa_runtime_versions(plugin: Path) -> bool:
     declared = read_json(versions_path)
     actual = {
         "plugin": read_json(plugin / ".claude-plugin" / "plugin.json")["version"],
+        "sherpa": read_cargo_version(plugin / "crates" / "sherpa" / "Cargo.toml"),
         "calmeta": read_cargo_version(plugin / "crates" / "calmeta" / "Cargo.toml"),
         "msgpipe": read_cargo_version(plugin / "crates" / "msgpipe" / "Cargo.toml"),
     }
@@ -142,6 +143,7 @@ def check_sherpa_runtime_versions(plugin: Path) -> bool:
         )
         doctor = (plugin / "scripts" / "doctor.sh").read_text(encoding="utf-8")
         expected_installer_values = {
+            "sherpa": f'SHERPA_VERSION="{declared.get("sherpa")}"',
             "calmeta": f'CALMETA_VERSION="{declared.get("calmeta")}"',
             "calctl": f'CALCTL_VERSION="{declared.get("calctl")}"',
             "msgpipe": f'MSGPIPE_VERSION="{declared.get("msgpipe")}"',
@@ -154,6 +156,7 @@ def check_sherpa_runtime_versions(plugin: Path) -> bool:
                 failures.append(f"{field}: installer pin differs")
 
         expected_doctor_values = {
+            "sherpa": f'SHERPA_VERSION="{declared.get("sherpa")}"',
             "calmeta": f'CALMETA_VERSION="{declared.get("calmeta")}"',
             "calctl": f'CALCTL_VERSION="{declared.get("calctl")}"',
             "msgpipe": f'MSGPIPE_VERSION="{declared.get("msgpipe")}"',
@@ -173,7 +176,7 @@ def check_sherpa_runtime_versions(plugin: Path) -> bool:
 
     print(
         "[release:runtime-version:success] "
-        f"plugin={plugin.name} calmeta={actual['calmeta']} calctl={actual['calctl']} "
+        f"plugin={plugin.name} sherpa={actual['sherpa']} calmeta={actual['calmeta']} calctl={actual['calctl']} "
         f"msgpipe={actual['msgpipe']} remctl={remctl['version']}"
     )
     return True

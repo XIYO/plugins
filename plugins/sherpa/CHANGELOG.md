@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Reframed Sherpa around Context and Planner instead of application-specific domains.
+- Added one public `sherpa` Rust CLI and moved KakaoTalk reply approval into a Clean Architecture Context service.
+- Replaced the `apple-calendar`, `apple-reminders`, and `message-pipeline` skills with `planner` and `context`.
+- Added connected mail as a bounded Context source and explicit `PlanningCandidate` handoff rules.
+- Removed the Python KakaoTalk reply runtime.
 - Added confirmation-gated KakaoTalk text replies with exact chat resolution, message-bound expiring previews, one-time dispatch tokens, and ambiguity rejection.
 - Kept KakaoTalk and Messages source databases read-only and left iMessage sending unsupported.
 

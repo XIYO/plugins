@@ -4,33 +4,36 @@ owner: maintainer
 ---
 # Software Requirements Specification
 
-## 목적
+## Product goal
 
-macOS 로컬 메시지를 외부 변경 없이 읽어 보호된 로컬 원문 아카이브에 동기화하고, 새 메시지만 스레드 단위 LLM 분석에 적합한 최소 토큰 표현으로 변환하는 요구사항의 정본이다.
+Sherpa collects the owner's requested communication context, identifies possible commitments, and records only confirmed commitments as Events or Tasks.
 
-## 범위
+## Domains
 
-범위에는 KakaoTalk·iMessage 읽기 전용 동기화, 원문·처리 상태 보관, 공통 메시지 정규화, 프로필별 최적화, 별칭 관리, 증분 CCT/TSV/JSON 내보내기, 토큰 집계와 세션 요약 연결이 포함된다. 메시지 전송, 메신저 읽음 처리, UI 자동화, 첨부 본문 해석과 LLM API 호출 자체는 포함하지 않는다.
+- [DOM-CTX Context Requirements](docs/requirements/context/README.md)
+- [DOM-PLAN Planner Requirements](docs/requirements/planner/README.md)
 
-## 도메인 목록
+## Cross-domain rules
 
-- [DOM-PIPE Pipeline Requirements](docs/requirements/pipeline/README.md)
+- `BR-SHERPA-001`: Applications and external tools are sources or adapters, not top-level domains.
+- `BR-SHERPA-002`: Context-derived commitments remain `PlanningCandidate` values until the owner confirms kind, title, destination, date, and recurrence.
+- `BR-SHERPA-003`: Planner writes must be read back from the target adapter.
+- `BR-SHERPA-004`: Public runtime commands begin with `sherpa context` or `sherpa planner`.
+- `BR-SHERPA-005`: A failed source stays explicitly unavailable; it is not reported as an empty result.
 
-## 상태 정의
+## State definitions
 
-- `draft`: 구현 및 검증 중
-- `review`: 수용 기준과 구현을 대조 중
-- `approved`: 수용 기준을 자동 테스트로 충족
-- `superseded`: 새 문서로 대체
-- `deprecated`: 사용 중단 예정
-- `archived`: 역사 기록
+- `draft`: implementation and verification are in progress
+- `review`: acceptance criteria are being compared with the implementation
+- `approved`: automated tests satisfy the acceptance criteria
+- `superseded`: replaced by a newer document
+- `deprecated`: scheduled for removal
+- `archived`: retained only for history
 
-## 추적 규칙
+## Traceability
 
-요구사항과 테스트는 `FR/BR/NFR/UC/AC/TEST` ID로 연결한다. 설계 문서는 구현 경로를 반복하지 않고 해당 요구사항 ID를 역참조한다.
+Requirements and tests use `FR/BR/NFR/UC/AC/TEST` identifiers. Design documents refer back to requirements instead of duplicating implementation paths.
 
-## 관련 문서
+## Related documents
 
-**상위** — [README](README.md) · [ARCHITECTURE](ARCHITECTURE.md) · [TESTING](TESTING.md)
-
-**도메인** — [Pipeline Requirements](docs/requirements/pipeline/README.md)
+**Parent** — [README](README.md) · [ARCHITECTURE](ARCHITECTURE.md) · [TESTING](TESTING.md)

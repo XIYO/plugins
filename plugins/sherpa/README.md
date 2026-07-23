@@ -1,12 +1,17 @@
 # Sherpa
 
-Sherpa is one installable macOS assistant for Calendar, Reminders, KakaoTalk, and iMessage workflows.
+Sherpa is one local-first macOS assistant with two clear responsibilities:
 
-The plugin is the product boundary. Its specialist skills and runtimes remain separate internally so Calendar writes, Reminders organization, message analysis, and confirmation-gated KakaoTalk replies keep their own safety rules.
+- Context collects and reviews the owner's requested KakaoTalk, iMessage, and mail context.
+- Planner records confirmed commitments as Events or Tasks through Apple Calendar and Reminders.
 
-Calendar and Reminders are Preview features. The message lane is Experimental because it depends on optional third-party readers and retains a protected local raw archive. Sherpa requires macOS 14 or newer; the complete stack is tested on macOS 26.x.
+The central flow is `ContextItem -> PlanningCandidate -> Event | Task`. Nothing found in a conversation or email becomes a plan without review.
+
+Context is Experimental because local message readers and mail connections vary by host. Planner is Preview. Sherpa requires macOS 14 or newer; the complete stack is tested on macOS 26.x.
 
 ## Install
+
+Codex:
 
 ```bash
 codex plugin marketplace add XIYO/plugins
@@ -22,99 +27,100 @@ claude plugin install sherpa@xiyo
 
 Start a new task or session after installation.
 
-## Capabilities
+## Product model
 
-| Capability | Internal skill | Runtime | Data boundary |
+| Domain | Internal skill | Result | Boundary |
 | --- | --- | --- | --- |
-| Calendar | `apple-calendar` | `calctl`, `calmeta` | EventKit read/write after macOS permission |
-| Reminders | `apple-reminders` | RemCTL 1.5.1 | iCloud database read; EventKit/ReminderKit write |
-| Messages | `message-pipeline` | `msgpipe`, `kakao-reply.py` | Sources remain read-only; KakaoTalk text dispatch requires confirmation |
-| Coordination | `sherpa` | Specialist skills above | Routes requests and combines bounded results |
+| Context | `context` | Collected context, summaries, PlanningCandidate values, confirmed replies | Sources read-only; outbound text requires approval |
+| Planner | `planner` | Events and Tasks | Platform writes are previewed and read back |
+| Orchestration | `sherpa` | Briefings and confirmed Context-to-Planner transitions | No automatic cross-domain mutation |
 
-KakaoTalk text replies are optional and use `kakaocli` UI automation. Sherpa first resolves one exact chat and presents a message-bound preview; every dispatch requires explicit confirmation. iMessage sending, attachments, reactions, and batch sends are not supported.
+Applications are adapters rather than product domains. KakaoTalk and iMessage are conversation sources; mail providers supply mail context. Apple Calendar stores Events and Apple Reminders stores Tasks.
 
 ## First use
 
-Ask Sherpa to diagnose one capability without changing data:
+Begin with a read-only diagnosis:
 
 ```text
-셰르파, 캘린더·미리 알림·메시지 기능 준비 상태만 확인해줘. 데이터는 변경하거나 출력하지 마.
+셰르파, Context와 Planner 준비 상태만 확인해줘. 내 데이터는 변경하거나 출력하지 마.
 ```
 
-When a runtime is missing, the relevant skill runs the bundled installer for that capability. Runtime binaries are installed under `~/.local/bin` by default. Override the root with `SHERPA_INSTALL_ROOT`.
+When a runtime is missing, the selected skill runs the bundled installer. Managed binaries use `~/.local/bin` by default; override the root with `SHERPA_INSTALL_ROOT`.
 
 Manual setup:
 
 ```bash
-bash scripts/install-runtime.sh calendar
-bash scripts/install-runtime.sh reminders
-bash scripts/install-runtime.sh messages
+bash scripts/install-runtime.sh context
+bash scripts/install-runtime.sh planner
 bash scripts/doctor.sh all
 ```
 
-RemCTL is fetched from the verified `v1.5.1` source commit during the Reminders setup. The installer builds it in an isolated staging root and copies only `remctl`, its required helpers, and a provenance marker. It does not copy the upstream `rctl` or `reminders` aliases, completions, or temporary config. `remctl onboard` may later create `~/.config/remctl`. `kakaocli` and `imsg` remain optional external tools and are never installed automatically. KakaoTalk replies additionally require a `kakaocli` build that exposes `send` plus macOS Accessibility permission for the host driving KakaoTalk.
+The only public runtime interface is:
+
+```text
+sherpa context ...
+sherpa planner ...
+```
+
+Context sources `kakaocli` and `imsg` remain optional external tools and are not installed automatically. Mail collection uses a mail app connected to the host. KakaoTalk replies require a `kakaocli` build with `send` support and macOS Accessibility permission.
+
+Planner installs a verified RemCTL 1.5.1 dependency in an isolated staging root and copies only required components. It does not create the upstream `rctl` or `reminders` aliases.
+
+## Examples
+
+```text
+오늘 온 카카오톡·아이메시지·메일에서 내가 대응할 것만 검토해줘.
+이 대화에서 약속 후보를 뽑고, 아직 캘린더에는 넣지 마.
+확인한 약속은 Event로, 해야 할 일은 Task로 등록해줘.
+이 카카오톡 답장을 준비하고 보내기 전에 보여줘.
+```
 
 ## Personal configuration
 
-Sherpa discovers live Calendar and Reminders names instead of assuming the author's taxonomy. Optional local preferences can live at `~/.config/xiyo/sherpa/config.toml`; never commit that file to this repository.
+Sherpa discovers live sources and destinations instead of assuming the author's taxonomy. Optional preferences can live at `~/.config/xiyo/sherpa/config.toml`; never commit that file.
 
 ```toml
 timezone = "Asia/Seoul"
 basecamp_calendar = "Basecamp"
 basecamp_reminders_list = "Basecamp"
-message_sources = ["imessage"]
+context_sources = ["imessage", "mail"]
 ```
 
 ## Data and permission boundaries
 
-- Calendar mutations use EventKit and inspect the target before writing.
-- Reminders organization may use RemCTL's private ReminderKit adapter. Run the privacy-filtered `bash scripts/doctor.sh reminders` again after macOS upgrades.
-- Message source databases are read-only. `msgpipe` writes a separate owner-only local SQLite archive and exports only selected pending messages for analysis.
-- KakaoTalk reply previews create owner-only, short-lived confirmation records under the user's local state directory. The record stores the exact chat and message digest, not the message body, and is removed after dispatch, cancellation, or expiry cleanup.
-- KakaoTalk UI automation may foreground the app and open the target chat. A successful command confirms dispatch automation, not recipient delivery or reading.
-- Message content is retained until the user runs `msgpipe purge --force`. There is no implicit retention-window deletion.
-- Model providers configured in the host application may process content intentionally returned to the agent.
-- Logs and bug reports must not include calendar notes, reminder bodies, message text, names, contact details, credentials, source identifiers, or local database paths.
+- KakaoTalk and iMessage source databases remain read-only.
+- Selected conversation context is stored in a separate owner-only local SQLite archive.
+- Mail is read from a connected provider only within the requested search scope.
+- Context-derived commitments remain PlanningCandidate values until the owner confirms them.
+- Planner writes through Apple adapters and reads the result back.
+- KakaoTalk reply approvals bind one exact conversation, the message digest, and a short expiry. Approval files contain no message body and are single-use.
+- KakaoTalk UI automation may foreground the app and affect read state. Dispatch success does not prove delivery or reading.
+- iMessage sending, email sending, attachments, reactions, and batch sends are unsupported.
+- Model providers configured in the host may process content intentionally returned to the agent.
+- Logs and bug reports exclude context bodies, Event and Task notes, names, contact details, credentials, source identifiers, and local database paths.
 
-## Migration from the specialist plugins
+## Compatibility
 
-`apple-calendar@xiyo` and `message-pipeline@xiyo` remain available for a compatibility window. Do not enable them together with Sherpa because overlapping skill triggers can produce duplicate routing.
+`apple-calendar@xiyo` and `message-pipeline@xiyo` remain temporarily available for existing installations. New users install only Sherpa. Do not enable a compatibility plugin together with Sherpa because triggers overlap.
 
-After Sherpa works in a new task, remove the old installs:
-
-```bash
-codex plugin remove apple-calendar@xiyo
-codex plugin remove message-pipeline@xiyo
-```
-
-Existing `calctl`, `calmeta`, `msgpipe`, and msgpipe data locations are preserved.
+The old runtime executables remain internal compatibility adapters during this window. Existing Context archives are opened in place when no canonical Sherpa archive exists.
 
 ## Update and removal
-
-For a Git-backed Codex marketplace, refresh and reinstall:
 
 ```bash
 codex plugin marketplace upgrade xiyo
 codex plugin add sherpa@xiyo
 ```
 
-The plugin cache and local runtimes have separate lifecycles. Before removal, inspect the archive path. If the user wants the raw messages and derived analysis deleted, require confirmation and then purge them:
+Before removal, inspect and optionally purge the Context archive:
 
 ```bash
-~/.local/bin/msgpipe state-path
-~/.local/bin/msgpipe purge --force
+~/.local/bin/sherpa context state-path
+~/.local/bin/sherpa context purge --force
 codex plugin remove sherpa@xiyo
 ```
 
-`purge --force` removes only the selected msgpipe database and its SQLite `-wal`, `-shm`, and rollback `-journal` sidecars from an owner-only directory. It does not remove unrelated files. `codex plugin remove` leaves these managed files in place for compatibility with existing installations:
-
-- `~/.local/bin/calctl`, `calmeta`, and `msgpipe`
-- `~/.local/bin/remctl`, `remctl-bridge`, `remctl-permissions`, `remctl-private`, and `remctl_*.py`
-- `~/.local/share/sherpa/remctl.provenance`
-- `~/.local/share/licenses/sherpa/remctl/LICENSE`
-- `~/.config/remctl` if the user later created it through RemCTL onboarding
-
-Review exact ownership before deleting shared runtime files. Sherpa never removes them as a side effect of removing the plugin.
+`purge --force` removes only the selected Context database and its SQLite sidecars after path confirmation. Removing the plugin does not delete managed runtimes, Context state, approval state, or configuration.
 
 ## Development
 
@@ -122,4 +128,4 @@ Review exact ownership before deleting shared runtime files. Sherpa never remove
 bash scripts/check.sh
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for component boundaries and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the pinned RemCTL dependency.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the Clean Architecture boundaries and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party dependencies.

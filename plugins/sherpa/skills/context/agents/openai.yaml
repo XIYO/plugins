@@ -1,0 +1,4 @@
+interface:
+  display_name: "Context"
+  short_description: "카카오톡·iMessage·메일에서 개인 컨텍스트 수집"
+  default_prompt: "Use $context to collect and review only the context I requested from KakaoTalk, iMessage, and mail."

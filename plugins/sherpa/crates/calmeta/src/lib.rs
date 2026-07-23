@@ -814,14 +814,16 @@ mod tests {
     fn skill_reference_covers_every_registered_schema_field() {
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let reference_path = [
+            manifest_dir.join("skills/planner/references/event-metadata.md"),
+            manifest_dir.join("../../skills/planner/references/event-metadata.md"),
             manifest_dir.join("skills/apple-calendar/references/metadata-schema.md"),
             manifest_dir.join("../../skills/apple-calendar/references/metadata-schema.md"),
         ]
         .into_iter()
         .find(|path| path.is_file())
-        .expect("Apple Calendar 메타데이터 스키마 문서 경로");
+        .expect("Planner 이벤트 메타데이터 스키마 문서 경로");
         let reference = std::fs::read_to_string(reference_path)
-            .expect("Apple Calendar 메타데이터 스키마 문서 읽기");
+            .expect("Planner 이벤트 메타데이터 스키마 문서 읽기");
 
         for schema in SCHEMAS {
             let schema_heading = format!("{}@{}", schema.name, schema.major);

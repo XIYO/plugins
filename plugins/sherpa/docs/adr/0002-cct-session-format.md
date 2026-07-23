@@ -29,7 +29,7 @@ supersedes: []
 
 ## 관련 문서
 
-**설계** — [DESIGN-PIPE](../design/pipeline/DESIGN.md)
+**설계** — [DESIGN-CTX](../design/context/DESIGN.md)
 
 **계약** — [CCT](../../contracts/cct/CCT.md)
 
