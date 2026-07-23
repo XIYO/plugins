@@ -13,7 +13,7 @@ Sherpa is the single consumer entry point. It decides what the user is asking fo
 | --- | --- | --- |
 | Calendar | `Skill(apple-calendar)` | EventKit reads and writes; structured note validation |
 | Reminders | `Skill(apple-reminders)` | RemCTL reads and writes; organization and recurrence |
-| Messages | `Skill(message-pipeline)` | KakaoTalk and iMessage read-only sync and pending-only analysis |
+| Messages | `Skill(message-pipeline)` | Read-only sync and analysis; confirmation-gated KakaoTalk text replies |
 
 Do not ask the user to install these as separate plugins. They are internal skills in the same Sherpa installation.
 
@@ -42,7 +42,7 @@ For a daily or range briefing, follow `references/briefing.md`. Collect independ
 
 Follow `references/safety.md` and the selected specialist's stricter rules.
 
-- Message sources remain read-only; Sherpa does not send messages or change read state.
+- Message source databases remain read-only. KakaoTalk text replies use the specialist's separate preview-and-confirm boundary; Sherpa does not send iMessage or alter read state deliberately.
 - Destructive Calendar or Reminders operations require an exact target preview and user confirmation.
 - Recurring Calendar edits require an explicit occurrence span.
 - Reminders bulk moves require pre/post counts and clone-delete awareness.

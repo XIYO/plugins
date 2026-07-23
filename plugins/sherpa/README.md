@@ -2,7 +2,7 @@
 
 Sherpa is one installable macOS assistant for Calendar, Reminders, KakaoTalk, and iMessage workflows.
 
-The plugin is the product boundary. Its specialist skills and runtimes remain separate internally so Calendar writes, Reminders organization, and read-only message analysis keep their own safety rules.
+The plugin is the product boundary. Its specialist skills and runtimes remain separate internally so Calendar writes, Reminders organization, message analysis, and confirmation-gated KakaoTalk replies keep their own safety rules.
 
 Calendar and Reminders are Preview features. The message lane is Experimental because it depends on optional third-party readers and retains a protected local raw archive. Sherpa requires macOS 14 or newer; the complete stack is tested on macOS 26.x.
 
@@ -28,10 +28,10 @@ Start a new task or session after installation.
 | --- | --- | --- | --- |
 | Calendar | `apple-calendar` | `calctl`, `calmeta` | EventKit read/write after macOS permission |
 | Reminders | `apple-reminders` | RemCTL 1.5.1 | iCloud database read; EventKit/ReminderKit write |
-| Messages | `message-pipeline` | `msgpipe` | KakaoTalk and Messages sources remain read-only |
+| Messages | `message-pipeline` | `msgpipe`, `kakao-reply.py` | Sources remain read-only; KakaoTalk text dispatch requires confirmation |
 | Coordination | `sherpa` | Specialist skills above | Routes requests and combines bounded results |
 
-The plugin does not send messages. KakaoTalk and iMessage support is for local read-only synchronization and analysis.
+KakaoTalk text replies are optional and use `kakaocli` UI automation. Sherpa first resolves one exact chat and presents a message-bound preview; every dispatch requires explicit confirmation. iMessage sending, attachments, reactions, and batch sends are not supported.
 
 ## First use
 
@@ -52,7 +52,7 @@ bash scripts/install-runtime.sh messages
 bash scripts/doctor.sh all
 ```
 
-RemCTL is fetched from the verified `v1.5.1` source commit during the Reminders setup. The installer builds it in an isolated staging root and copies only `remctl`, its required helpers, and a provenance marker. It does not copy the upstream `rctl` or `reminders` aliases, completions, or temporary config. `remctl onboard` may later create `~/.config/remctl`. `kakaocli` and `imsg` remain optional external source readers and are never installed automatically.
+RemCTL is fetched from the verified `v1.5.1` source commit during the Reminders setup. The installer builds it in an isolated staging root and copies only `remctl`, its required helpers, and a provenance marker. It does not copy the upstream `rctl` or `reminders` aliases, completions, or temporary config. `remctl onboard` may later create `~/.config/remctl`. `kakaocli` and `imsg` remain optional external tools and are never installed automatically. KakaoTalk replies additionally require a `kakaocli` build that exposes `send` plus macOS Accessibility permission for the host driving KakaoTalk.
 
 ## Personal configuration
 
@@ -70,6 +70,8 @@ message_sources = ["imessage"]
 - Calendar mutations use EventKit and inspect the target before writing.
 - Reminders organization may use RemCTL's private ReminderKit adapter. Run the privacy-filtered `bash scripts/doctor.sh reminders` again after macOS upgrades.
 - Message source databases are read-only. `msgpipe` writes a separate owner-only local SQLite archive and exports only selected pending messages for analysis.
+- KakaoTalk reply previews create owner-only, short-lived confirmation records under the user's local state directory. The record stores the exact chat and message digest, not the message body, and is removed after dispatch, cancellation, or expiry cleanup.
+- KakaoTalk UI automation may foreground the app and open the target chat. A successful command confirms dispatch automation, not recipient delivery or reading.
 - Message content is retained until the user runs `msgpipe purge --force`. There is no implicit retention-window deletion.
 - Model providers configured in the host application may process content intentionally returned to the agent.
 - Logs and bug reports must not include calendar notes, reminder bodies, message text, names, contact details, credentials, source identifiers, or local database paths.

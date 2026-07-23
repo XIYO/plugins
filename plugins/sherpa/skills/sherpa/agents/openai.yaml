@@ -1,4 +1,4 @@
 interface:
   display_name: "Sherpa"
-  short_description: "캘린더·미리 알림·메시지를 하나로 조정하는 개인 비서"
-  default_prompt: "Use $sherpa to coordinate my calendar, reminders, and new-message action items safely."
+  short_description: "캘린더·미리 알림·메시지와 승인형 카톡 답장을 조정"
+  default_prompt: "Use $sherpa to coordinate my calendar, reminders, new-message action items, and confirmation-gated KakaoTalk text replies safely."

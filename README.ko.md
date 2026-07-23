@@ -30,7 +30,7 @@ claude plugin install sherpa@xiyo
 | --- | --- | --- | --- |
 | Apple Calendar | `apple-calendar` | `calctl`, `calmeta` | 권한 승인 후 EventKit 읽기·쓰기 |
 | Apple Reminders | `apple-reminders` | RemCTL 1.5.1 | iCloud 읽기, EventKit/ReminderKit 쓰기 |
-| KakaoTalk·iMessage | `message-pipeline` | `msgpipe` | 원본 저장소 읽기 전용, 보호된 로컬 보관소 쓰기 |
+| KakaoTalk·iMessage | `message-pipeline` | `msgpipe`, `kakao-reply.py` | 원본 읽기 전용, 확인된 카카오톡 텍스트 전송 |
 | 통합 브리핑·등록 | `sherpa` | 위 전문 모듈 | 범위가 좁은 라우팅과 결과 통합 |
 
 플러그인은 설치·제품 단위입니다. 내부 스킬은 분리해 각 데이터 소스의 권한, 검증, 삭제 안전 규칙을 그대로 유지합니다.
@@ -59,14 +59,14 @@ bash scripts/doctor.sh all
 - macOS 14 이상이 필요합니다. Calendar는 Rust와 Xcode Command Line Tools, Reminders는 Python 3와 Xcode의 Swift·Clang 도구, Message Pipeline은 Rust가 필요합니다. Sherpa 전체 조합은 macOS 26.x에서 검증합니다.
 - Calendar와 Reminders 권한은 각 기능을 처음 사용할 때 해당 어댑터가 요청합니다.
 - RemCTL은 번들 설치기가 고정·검증한 1.5.1 소스 커밋에서 가져옵니다. upstream 설치는 임시 위치에서 수행하고 필요한 구성요소만 복사하며, 일반명 `rctl`·`reminders` 별칭은 만들지 않습니다.
-- `kakaocli`와 `imsg`는 선택형 외부 리더이며 자동 설치하지 않습니다.
+- `kakaocli`와 `imsg`는 선택형 외부 도구이며 자동 설치하지 않습니다. 카카오톡 답장에는 `send`를 지원하는 `kakaocli`와 접근성 권한이 필요합니다.
 - CLI를 직접 쓰려면 `~/.local/bin`을 `PATH`에 포함합니다.
 
 ## 데이터 경계
 
 - Calendar 변경은 EventKit으로 실행하고 변경 후 다시 읽어 검증합니다.
 - Reminders 변경은 RemCTL로 실행하며 Sherpa가 Reminders 데이터베이스에 직접 쓰지 않습니다.
-- Message Pipeline은 KakaoTalk·Messages 원본 데이터베이스를 수정하지 않고 메시지를 발송하지 않습니다.
+- Message Pipeline은 KakaoTalk·Messages 원본 데이터베이스를 수정하지 않습니다. 카카오톡 텍스트는 정확한 대상과 본문이 결합된 미리보기를 사용자가 확인한 뒤에만 전송하며 iMessage 전송은 지원하지 않습니다.
 - 동기화한 메시지 원문은 사용자가 명시적으로 비울 때까지 소유자 전용 로컬 SQLite에 저장합니다. 애플리케이션 수준 암호화는 하지 않으므로 FileVault 사용을 권장합니다.
 - 사용자가 선택해 에이전트에 반환한 내용만 설정된 모델 컨텍스트에 들어갑니다.
 - 로그와 버그 제보에는 메시지 본문, 일정·미리 알림 메모, 이름, 연락처, 인증 정보, 원본 식별자, 로컬 데이터베이스 경로를 넣지 않습니다.

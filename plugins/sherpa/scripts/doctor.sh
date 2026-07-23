@@ -186,6 +186,13 @@ doctor_messages() {
   fi
   if "$msgpipe" doctor kakao; then
     echo "[doctor:messages:kakao:warn] KakaoTalk reader executable detected; authentication and database access are not verified" >&2
+    local kakaocli=""
+    kakaocli="$(resolve_command kakaocli)"
+    if [ -x "$kakaocli" ] && "$kakaocli" help send >/dev/null 2>&1; then
+      echo "[doctor:messages:kakao-send:warn] Confirmation-gated KakaoTalk replies are available; Accessibility and UI dispatch are not verified" >&2
+    else
+      echo "[doctor:messages:kakao-send:warn] Installed kakaocli does not expose the required send command" >&2
+    fi
   else
     echo "[doctor:messages:kakao:warn] KakaoTalk reader is not configured" >&2
   fi

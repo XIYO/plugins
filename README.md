@@ -30,7 +30,7 @@ Start a new Codex task or Claude Code session after installation so all bundled 
 | --- | --- | --- | --- |
 | Apple Calendar | `apple-calendar` | `calctl`, `calmeta` | EventKit read/write after permission |
 | Apple Reminders | `apple-reminders` | RemCTL 1.5.1 | iCloud read; EventKit/ReminderKit write |
-| KakaoTalk and iMessage | `message-pipeline` | `msgpipe` | Source stores read-only; protected local archive write |
+| KakaoTalk and iMessage | `message-pipeline` | `msgpipe`, `kakao-reply.py` | Sources read-only; confirmed KakaoTalk text dispatch |
 | Cross-source briefings and capture | `sherpa` | Specialists above | Bounded routing and combined presentation |
 
 The plugin is the installation and product boundary. The internal skills remain separate so each data source keeps its own permission, validation, and destructive-action rules.
@@ -59,14 +59,14 @@ bash scripts/doctor.sh all
 - macOS 14 or newer. Calendar requires Rust and Xcode Command Line Tools, Reminders requires Python 3 plus the Swift and Clang tools from Xcode, and Message Pipeline requires Rust. The complete Sherpa stack is tested on macOS 26.x.
 - Calendar and Reminders permissions are requested by their own adapters on first use.
 - RemCTL is fetched from a pinned, verified 1.5.1 source commit by the bundled installer. Sherpa stages the upstream install and copies only the required components; it does not create the generic `rctl` or `reminders` aliases.
-- `kakaocli` and `imsg` are optional external readers. They are not installed automatically.
+- `kakaocli` and `imsg` are optional external tools. They are not installed automatically. KakaoTalk replies require a `kakaocli` build with `send` support and Accessibility permission.
 - Add `~/.local/bin` to `PATH` for direct CLI use.
 
 ## Data boundaries
 
 - Calendar changes go through EventKit and are read back after mutation.
 - Reminders changes go through RemCTL. Sherpa never writes directly to the Reminders database.
-- Message Pipeline never modifies KakaoTalk or Messages source databases and never sends messages.
+- Message Pipeline never modifies KakaoTalk or Messages source databases. KakaoTalk text dispatch is available only after an exact-target, message-bound preview and explicit confirmation; iMessage sending is unsupported.
 - Synchronized message text is stored in an owner-only local SQLite archive until the user explicitly purges it. FileVault is recommended because the archive is not application-level encrypted.
 - Only selected content returned to the agent enters the configured model context.
 - Logs and bug reports must not include message bodies, calendar or reminder notes, names, contact details, credentials, source identifiers, or local database paths.

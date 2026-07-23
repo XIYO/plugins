@@ -35,6 +35,8 @@ echo "[check:sherpa:swift:success] EventKit adapter passed" >&2
 bash -n scripts/install-runtime.sh scripts/doctor.sh scripts/check.sh
 bash scripts/install-runtime.sh --help >/dev/null
 bash scripts/doctor.sh --help >/dev/null
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
+python3 scripts/kakao-reply.py --help >/dev/null
 
 echo "[check:sherpa:install:start] Smoke-testing all managed runtimes in an isolated root" >&2
 SMOKE_INSTALL_ROOT="$CHECK_TARGET_DIR/install-root"

@@ -8,7 +8,9 @@ Consumers install one plugin: `sherpa@xiyo`. The plugin bundles multiple skills 
 sherpa skill
 ├── apple-calendar skill  -> calctl + calmeta
 ├── apple-reminders skill -> RemCTL
-└── message-pipeline      -> msgpipe -> kakaocli / imsg
+└── message-pipeline
+    ├── read and analyze  -> msgpipe -> kakaocli / imsg
+    └── KakaoTalk reply   -> kakao-reply.py -> kakaocli UI automation
 ```
 
 There is no plugin-to-plugin dependency. Codex loads every specialist from this plugin's own `skills/` directory.
@@ -19,6 +21,7 @@ There is no plugin-to-plugin dependency. Codex loads every specialist from this 
 - `calmeta` parses and validates structured Calendar notes without accessing Calendar data.
 - RemCTL owns Reminders access. Sherpa never writes to the Reminders SQLite store directly.
 - `msgpipe` owns the protected raw-message archive, pending state, CCT export, and summary watermarks. Source readers remain read-only.
+- `kakao-reply.py` owns the outbound KakaoTalk mutation boundary. It resolves one exact chat, stores only a private short-lived confirmation record, binds approval to the message digest, and invokes `kakaocli send` once.
 - Sherpa owns intent classification, bounded collection, confirmation policy, and cross-source presentation. It does not reimplement specialist parsers.
 
 ## Version boundaries

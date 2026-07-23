@@ -29,7 +29,8 @@ Sherpa는 `skills/sherpa`, `skills/apple-calendar`, `skills/apple-reminders`, `s
 
 ## 데이터 불변 규칙
 
-- KakaoTalk와 iMessage 소스 데이터는 읽기 전용으로 다룬다. 메시지 전송, 읽음 처리, 감시, UI 자동화, 첨부 변환 명령을 코드 경로에 추가하지 않는다.
+- KakaoTalk와 iMessage 소스 데이터베이스는 읽기 전용으로 다룬다. 읽음 처리, 감시, 첨부 변환 명령을 코드 경로에 추가하지 않는다.
+- KakaoTalk 텍스트 전송은 Sherpa의 별도 승인 경계에서만 허용한다. 정확한 채팅방 단일 해석, 본문 결합 미리보기, 짧은 만료 토큰, 사용자 확인, 일회성 전송을 모두 거쳐야 한다. iMessage 전송은 지원하지 않는다.
 - 원문 채팅은 msgpipe의 소유자 전용 로컬 SQLite에만 저장한다. 동일 원본 메시지는 멱등 upsert하고, 수정된 메시지는 기존 분석 연결을 끊어 다시 pending으로 만든다.
 - 분석 완료와 세션 요약, 상위 rollup과 입력 watermark 연결은 각각 같은 트랜잭션에서 처리한다.
 - 모델 입력은 스레드와 화자를 별칭으로 치환한다. 실명 매핑은 소유자 전용 로컬 SQLite에만 둔다.
