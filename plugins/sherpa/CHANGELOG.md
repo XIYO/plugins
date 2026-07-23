@@ -4,6 +4,7 @@
 
 - Added confirmation-gated KakaoTalk text replies with exact chat resolution, message-bound expiring previews, one-time dispatch tokens, and ambiguity rejection.
 - Kept KakaoTalk and Messages source databases read-only and left iMessage sending unsupported.
+
 ## 0.1.0 - 2026-07-23
 
 - Added one Sherpa installation for Apple Calendar, Apple Reminders, KakaoTalk, and iMessage workflows.
