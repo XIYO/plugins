@@ -144,7 +144,7 @@ fn context_reply_rejects_ambiguous_conversation_names() {
 }
 
 #[test]
-fn public_domains_forward_only_to_their_configured_adapters() {
+fn planner_forwards_only_to_its_configured_platform_adapters() {
     let root = tempdir().unwrap();
     let adapter = root.path().join("adapter");
     let log = root.path().join("adapter.log");
@@ -157,21 +157,11 @@ fn public_domains_forward_only_to_their_configured_adapters() {
 
     Command::cargo_bin("sherpa")
         .unwrap()
-        .env("SHERPA_CONTEXT_ENGINE_BIN", &adapter)
-        .env("SHERPA_TEST_ADAPTER_LOG", &log)
-        .args(["context", "status", "kakaotalk"])
-        .assert()
-        .success();
-    Command::cargo_bin("sherpa")
-        .unwrap()
-        .env("SHERPA_CALENDAR_ADAPTER_BIN", &adapter)
+        .env("SHERPA_PLANNER_CALENDAR_BIN", &adapter)
         .env("SHERPA_TEST_ADAPTER_LOG", &log)
         .args(["planner", "calendar", "events", "--json"])
         .assert()
         .success();
 
-    assert_eq!(
-        fs::read_to_string(log).unwrap(),
-        "status kakaotalk\nevents --json\n"
-    );
+    assert_eq!(fs::read_to_string(log).unwrap(), "events --json\n");
 }

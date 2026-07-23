@@ -15,12 +15,13 @@ Use two user-goal domains:
 - Context collects and interprets KakaoTalk, iMessage, and mail.
 - Planner represents commitments as Events or Tasks and persists them through Calendar or Reminders adapters.
 
-Keep `sherpa` as the only public CLI. Place approval-bound replies inside Context. Treat external application names and legacy executable names as adapters.
+Keep `sherpa` as the only CLI. Place approval-bound replies inside Context. Link domain engines into the application process and isolate only operating-system boundaries as adapters.
 
 ## Consequences
 
 - Skills reduce to `sherpa`, `context`, and `planner`.
 - Python is removed from the KakaoTalk reply path.
 - New documentation uses domain names instead of implementation names.
-- Compatibility executables remain temporarily installed but are not public vocabulary.
+- Context and Planner metadata are Rust libraries, not subprocesses.
+- Calendar and Reminders are the only separate platform adapters.
 - Email collection can be added as a Context source without changing the Planner model.

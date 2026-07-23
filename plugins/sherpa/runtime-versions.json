@@ -1,10 +1,10 @@
 {
   "plugin": "0.1.0",
-  "sherpa": "0.1.0",
-  "calmeta": "0.1.0",
-  "calctl": "0.1.2",
-  "msgpipe": "0.2.1",
-  "remctl": {
+  "application": "0.1.0",
+  "contextDomain": "0.2.1",
+  "plannerMetadata": "0.1.0",
+  "calendarAdapter": "0.1.2",
+  "remindersAdapter": {
     "version": "1.5.1",
     "gitCommit": "eb75c451eab006218204bb78379917f3414fc6e3",
     "source": "https://github.com/viticci/remctl.git"

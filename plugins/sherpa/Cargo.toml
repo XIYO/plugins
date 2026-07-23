@@ -1,3 +1,7 @@
 [workspace]
-members = ["crates/calmeta", "crates/msgpipe", "crates/sherpa"]
+members = [
+  "crates/context-engine",
+  "crates/planner-metadata",
+  "crates/sherpa",
+]
 resolver = "3"

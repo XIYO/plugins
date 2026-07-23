@@ -64,7 +64,7 @@ sherpa planner ...
 
 Context sources `kakaocli` and `imsg` remain optional external tools and are not installed automatically. Mail collection uses a mail app connected to the host. KakaoTalk replies require a `kakaocli` build with `send` support and macOS Accessibility permission.
 
-Planner installs a verified RemCTL 1.5.1 dependency in an isolated staging root and copies only required components. It does not create the upstream `rctl` or `reminders` aliases.
+Planner stages a pinned Reminders implementation, exposes it only as `sherpa-reminders-adapter`, and does not install upstream command aliases.
 
 ## Examples
 
@@ -98,12 +98,6 @@ context_sources = ["imessage", "mail"]
 - iMessage sending, email sending, attachments, reactions, and batch sends are unsupported.
 - Model providers configured in the host may process content intentionally returned to the agent.
 - Logs and bug reports exclude context bodies, Event and Task notes, names, contact details, credentials, source identifiers, and local database paths.
-
-## Compatibility
-
-`apple-calendar@xiyo` and `message-pipeline@xiyo` remain temporarily available for existing installations. New users install only Sherpa. Do not enable a compatibility plugin together with Sherpa because triggers overlap.
-
-The old runtime executables remain internal compatibility adapters during this window. Existing Context archives are opened in place when no canonical Sherpa archive exists.
 
 ## Update and removal
 

@@ -11,7 +11,7 @@
 ## 설치
 ```bash
 bash <sherpa-plugin-root>/scripts/install-runtime.sh planner
-# 기본 설치 경로는 ~/.local/bin/remctl
+# 내부 어댑터는 ~/.local/bin/sherpa-reminders-adapter
 bash <sherpa-plugin-root>/scripts/doctor.sh planner  # 민감 경로를 숨긴 상태 점검
 ```
 **요구사항**: `swiftc`(EventKit·권한 헬퍼), `clang`(remctl-private=ReminderKit), python3. 권한: **Reminders(EventKit) + 자동화 + Full Disk Access(SQLite 읽기)**. 번들 doctor는 성공·실패·경고 개수만 보고하고 DB 경로와 리스트 정보는 숨긴다. FDA 없으면 `--via-eventkit` 폴백(제한적: 섹션·태그·id 없음).

@@ -89,17 +89,12 @@ Before removal, inspect and optionally purge Context state:
 codex plugin remove sherpa@xiyo
 ```
 
-## Compatibility plugins
-
-`apple-calendar@xiyo` and `message-pipeline@xiyo` remain temporarily available for existing installations. New users install only `sherpa@xiyo`.
-
 ## Repository layout
 
 - `.agents/plugins/marketplace.json`: Codex marketplace catalog
 - `.claude-plugin/marketplace.json`: Claude Code marketplace catalog
-- `plugins/sherpa/`: primary self-contained product
-- `plugins/apple-calendar/`, `plugins/message-pipeline/`: temporary compatibility packages
-- `catalog-policy.json`: primary and compatibility-package policy
+- `plugins/sherpa/`: the only self-contained product and source of truth
+- `catalog-policy.json`: published-product policy
 - `scripts/`: catalog, version, and repository checks
 
 ## Contributing and support

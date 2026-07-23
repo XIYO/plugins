@@ -53,14 +53,9 @@ def check_plugin(plugin: Path) -> bool:
 
 
 def check_swift_adapter(plugin: Path) -> bool:
-    direct_runtime = plugin / "runtime"
-    nested_runtime = direct_runtime / "calctl"
-    if (nested_runtime / "calctl.swift").exists() or (nested_runtime / "Info.plist").exists():
-        source_path = nested_runtime / "calctl.swift"
-        plist_path = nested_runtime / "Info.plist"
-    else:
-        source_path = direct_runtime / "calctl.swift"
-        plist_path = direct_runtime / "Info.plist"
+    runtime = plugin / "runtime" / "calendar-adapter"
+    source_path = runtime / "calendar-adapter.swift"
+    plist_path = runtime / "Info.plist"
     if not source_path.exists() and not plist_path.exists():
         return True
     if not source_path.exists() or not plist_path.exists():
@@ -71,10 +66,10 @@ def check_swift_adapter(plugin: Path) -> bool:
         return False
 
     source = source_path.read_text(encoding="utf-8")
-    match = re.search(r'private let calctlVersion = "([^"]+)"', source)
+    match = re.search(r'private let calendarAdapterVersion = "([^"]+)"', source)
     if match is None:
         print(
-            f"[release:adapter-version:error] calctlVersion is missing: {plugin.name}",
+            f"[release:adapter-version:error] calendarAdapterVersion is missing: {plugin.name}",
             file=sys.stderr,
         )
         return False
@@ -84,7 +79,7 @@ def check_swift_adapter(plugin: Path) -> bool:
     source_version = match.group(1)
     if source_version != plist_version:
         print(
-            f"[release:adapter-version:error] calctl version mismatch: {plugin.name}",
+            f"[release:adapter-version:error] Calendar adapter version mismatch: {plugin.name}",
             file=sys.stderr,
         )
         print(f"  {source_path.relative_to(plugin)}: {source_version}", file=sys.stderr)
@@ -93,7 +88,7 @@ def check_swift_adapter(plugin: Path) -> bool:
 
     print(
         f"[release:adapter-version:success] plugin={plugin.name} "
-        f"calctl-version={source_version}"
+        f"calendar-adapter-version={source_version}"
     )
     return True
 
@@ -112,19 +107,30 @@ def check_sherpa_runtime_versions(plugin: Path) -> bool:
     declared = read_json(versions_path)
     actual = {
         "plugin": read_json(plugin / ".claude-plugin" / "plugin.json")["version"],
-        "sherpa": read_cargo_version(plugin / "crates" / "sherpa" / "Cargo.toml"),
-        "calmeta": read_cargo_version(plugin / "crates" / "calmeta" / "Cargo.toml"),
-        "msgpipe": read_cargo_version(plugin / "crates" / "msgpipe" / "Cargo.toml"),
+        "application": read_cargo_version(plugin / "crates" / "sherpa" / "Cargo.toml"),
+        "contextDomain": read_cargo_version(
+            plugin / "crates" / "context-engine" / "Cargo.toml"
+        ),
+        "plannerMetadata": read_cargo_version(
+            plugin / "crates" / "planner-metadata" / "Cargo.toml"
+        ),
     }
 
-    swift_source = (plugin / "runtime" / "calctl" / "calctl.swift").read_text(
+    swift_source = (
+        plugin / "runtime" / "calendar-adapter" / "calendar-adapter.swift"
+    ).read_text(
         encoding="utf-8"
     )
-    swift_match = re.search(r'private let calctlVersion = "([^"]+)"', swift_source)
+    swift_match = re.search(
+        r'private let calendarAdapterVersion = "([^"]+)"', swift_source
+    )
     if swift_match is None:
-        print("[release:runtime-version:error] Sherpa calctlVersion is missing", file=sys.stderr)
+        print(
+            "[release:runtime-version:error] Sherpa calendarAdapterVersion is missing",
+            file=sys.stderr,
+        )
         return False
-    actual["calctl"] = swift_match.group(1)
+    actual["calendarAdapter"] = swift_match.group(1)
 
     failures: list[str] = []
     for name, actual_version in actual.items():
@@ -134,35 +140,40 @@ def check_sherpa_runtime_versions(plugin: Path) -> bool:
                 f"{name}: declared={declared_version} actual={actual_version}"
             )
 
-    remctl = declared.get("remctl")
-    if not isinstance(remctl, dict):
-        failures.append("remctl: runtime declaration is missing")
+    reminders_adapter = declared.get("remindersAdapter")
+    if not isinstance(reminders_adapter, dict):
+        failures.append("remindersAdapter: runtime declaration is missing")
     else:
         installer = (plugin / "scripts" / "install-runtime.sh").read_text(
             encoding="utf-8"
         )
         doctor = (plugin / "scripts" / "doctor.sh").read_text(encoding="utf-8")
         expected_installer_values = {
-            "sherpa": f'SHERPA_VERSION="{declared.get("sherpa")}"',
-            "calmeta": f'CALMETA_VERSION="{declared.get("calmeta")}"',
-            "calctl": f'CALCTL_VERSION="{declared.get("calctl")}"',
-            "msgpipe": f'MSGPIPE_VERSION="{declared.get("msgpipe")}"',
-            "version": f'REMCTL_TAG="v{remctl.get("version")}"',
-            "gitCommit": f'REMCTL_COMMIT="{remctl.get("gitCommit")}"',
-            "source": f'REMCTL_SOURCE="{remctl.get("source")}"',
+            "application": f'SHERPA_VERSION="{declared.get("application")}"',
+            "calendarAdapter": f'CALENDAR_ADAPTER_VERSION="{declared.get("calendarAdapter")}"',
+            "remindersAdapter.version": (
+                f'REMINDERS_ADAPTER_VERSION="{reminders_adapter.get("version")}"'
+            ),
+            "version": f'REMCTL_TAG="v{reminders_adapter.get("version")}"',
+            "gitCommit": f'REMCTL_COMMIT="{reminders_adapter.get("gitCommit")}"',
+            "source": f'REMCTL_SOURCE="{reminders_adapter.get("source")}"',
         }
         for field, shell_value in expected_installer_values.items():
             if shell_value not in installer:
                 failures.append(f"{field}: installer pin differs")
 
         expected_doctor_values = {
-            "sherpa": f'SHERPA_VERSION="{declared.get("sherpa")}"',
-            "calmeta": f'CALMETA_VERSION="{declared.get("calmeta")}"',
-            "calctl": f'CALCTL_VERSION="{declared.get("calctl")}"',
-            "msgpipe": f'MSGPIPE_VERSION="{declared.get("msgpipe")}"',
-            "remctl.version": f'REMCTL_VERSION="{remctl.get("version")}"',
-            "remctl.gitCommit": f'REMCTL_COMMIT="{remctl.get("gitCommit")}"',
-            "remctl.source": f'REMCTL_SOURCE="{remctl.get("source")}"',
+            "application": f'SHERPA_VERSION="{declared.get("application")}"',
+            "calendarAdapter": f'CALENDAR_ADAPTER_VERSION="{declared.get("calendarAdapter")}"',
+            "remindersAdapter.version": (
+                f'REMINDERS_ADAPTER_VERSION="{reminders_adapter.get("version")}"'
+            ),
+            "remindersAdapter.gitCommit": (
+                f'REMCTL_COMMIT="{reminders_adapter.get("gitCommit")}"'
+            ),
+            "remindersAdapter.source": (
+                f'REMCTL_SOURCE="{reminders_adapter.get("source")}"'
+            ),
         }
         for field, shell_value in expected_doctor_values.items():
             if shell_value not in doctor:
@@ -176,8 +187,11 @@ def check_sherpa_runtime_versions(plugin: Path) -> bool:
 
     print(
         "[release:runtime-version:success] "
-        f"plugin={plugin.name} sherpa={actual['sherpa']} calmeta={actual['calmeta']} calctl={actual['calctl']} "
-        f"msgpipe={actual['msgpipe']} remctl={remctl['version']}"
+        f"plugin={plugin.name} application={actual['application']} "
+        f"context-domain={actual['contextDomain']} "
+        f"planner-metadata={actual['plannerMetadata']} "
+        f"calendar-adapter={actual['calendarAdapter']} "
+        f"reminders-adapter={reminders_adapter['version']}"
     )
     return True
 

@@ -6,7 +6,6 @@ import json
 import os
 import re
 import sys
-from datetime import date
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -109,9 +108,12 @@ def validate_plugin(name: str, codex_entry: dict, claude_entry: dict) -> None:
             expected_path / "scripts" / "install-runtime.sh",
             expected_path / "scripts" / "doctor.sh",
             expected_path / "crates" / "sherpa" / "Cargo.toml",
-            expected_path / "crates" / "calmeta" / "Cargo.toml",
-            expected_path / "crates" / "msgpipe" / "Cargo.toml",
-            expected_path / "runtime" / "calctl" / "calctl.swift",
+            expected_path / "crates" / "context-engine" / "Cargo.toml",
+            expected_path / "crates" / "planner-metadata" / "Cargo.toml",
+            expected_path
+            / "runtime"
+            / "calendar-adapter"
+            / "calendar-adapter.swift",
             expected_path / "third_party" / "remctl" / "LICENSE",
         )
         for required_path in required_paths:
@@ -172,32 +174,12 @@ def main() -> int:
 
     policy = read_json(CATALOG_POLICY)
     primary = policy.get("primary")
-    legacy = policy.get("legacy")
-    migration_review_after = policy.get("migrationReviewAfter")
-    if (
-        not isinstance(primary, str)
-        or not isinstance(legacy, list)
-        or not isinstance(migration_review_after, str)
-    ):
-        fail(
-            "catalog-policy.json must define primary, legacy, and migrationReviewAfter"
-        )
-    try:
-        review_date = date.fromisoformat(migration_review_after)
-    except ValueError as error:
-        fail(f"migrationReviewAfter must be an ISO date: {error}")
-    if date.today() >= review_date:
-        fail(
-            "Compatibility review date has arrived; remove, extend, or justify the legacy packages: "
-            f"{migration_review_after}"
-        )
+    if not isinstance(primary, str):
+        fail("catalog-policy.json must define primary")
     if codex_names[0] != primary:
         fail(f"Primary plugin must be first: expected={primary}, actual={codex_names[0]}")
-    if set(codex_names[1:]) != set(legacy):
-        fail(
-            "Marketplace compatibility entries differ from catalog policy: "
-            f"marketplace={codex_names[1:]}, legacy={legacy}"
-        )
+    if codex_names != [primary]:
+        fail(f"Only the primary plugin may be published: marketplace={codex_names}")
 
     directory_names = sorted(
         path.name for path in PLUGIN_ROOT.iterdir() if path.is_dir()

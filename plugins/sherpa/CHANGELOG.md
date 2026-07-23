@@ -7,6 +7,9 @@
 - Replaced the `apple-calendar`, `apple-reminders`, and `message-pipeline` skills with `planner` and `context`.
 - Added connected mail as a bounded Context source and explicit `PlanningCandidate` handoff rules.
 - Removed the Python KakaoTalk reply runtime.
+- Removed the standalone compatibility plugins and legacy state-path fallback.
+- Linked Context and Planner metadata into the `sherpa` process as Rust libraries.
+- Renamed the only remaining platform boundaries to `sherpa-calendar-adapter` and `sherpa-reminders-adapter`.
 - Added confirmation-gated KakaoTalk text replies with exact chat resolution, message-bound expiring previews, one-time dispatch tokens, and ambiguity rejection.
 - Kept KakaoTalk and Messages source databases read-only and left iMessage sending unsupported.
 

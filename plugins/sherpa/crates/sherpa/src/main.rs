@@ -51,7 +51,7 @@ enum ContextCommand {
     Reply(ReplyArgs),
     /// Store or retrieve derived session, conversation, or global summaries.
     Summary(AdapterArguments),
-    /// Compatibility-backed context operation such as sync, pending, or status.
+    /// Context operation such as sync, pending, or status.
     #[command(external_subcommand)]
     Operation(Vec<OsString>),
 }
@@ -137,9 +137,9 @@ fn run_context(args: ContextArgs) -> Result<()> {
         ContextCommand::Summary(args) => {
             let mut arguments = vec![OsString::from("context")];
             arguments.extend(args.arguments);
-            run_adapter(Adapter::ContextEngine, &arguments)
+            sherpa_context::cli::run_from(arguments)
         }
-        ContextCommand::Operation(arguments) => run_adapter(Adapter::ContextEngine, &arguments),
+        ContextCommand::Operation(arguments) => sherpa_context::cli::run_from(arguments),
     }
 }
 
@@ -191,43 +191,36 @@ fn run_planner(args: PlannerArgs) -> Result<()> {
     match args.command {
         PlannerCommand::Calendar(args) => run_adapter(Adapter::Calendar, &args.arguments),
         PlannerCommand::Reminders(args) => run_adapter(Adapter::Reminders, &args.arguments),
-        PlannerCommand::Metadata(args) => run_adapter(Adapter::Metadata, &args.arguments),
+        PlannerCommand::Metadata(args) => sherpa_planner_metadata::cli::run_from(args.arguments)
+            .map_err(|error_value| anyhow::anyhow!("{error_value}")),
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 enum Adapter {
-    ContextEngine,
     Calendar,
     Reminders,
-    Metadata,
 }
 
 impl Adapter {
     fn command(self) -> &'static str {
         match self {
-            Self::ContextEngine => "msgpipe",
-            Self::Calendar => "calctl",
-            Self::Reminders => "remctl",
-            Self::Metadata => "calmeta",
+            Self::Calendar => "sherpa-calendar-adapter",
+            Self::Reminders => "sherpa-reminders-adapter",
         }
     }
 
     fn override_variable(self) -> &'static str {
         match self {
-            Self::ContextEngine => "SHERPA_CONTEXT_ENGINE_BIN",
-            Self::Calendar => "SHERPA_CALENDAR_ADAPTER_BIN",
-            Self::Reminders => "SHERPA_REMINDERS_ADAPTER_BIN",
-            Self::Metadata => "SHERPA_METADATA_ENGINE_BIN",
+            Self::Calendar => "SHERPA_PLANNER_CALENDAR_BIN",
+            Self::Reminders => "SHERPA_PLANNER_REMINDERS_BIN",
         }
     }
 
     fn boundary(self) -> &'static str {
         match self {
-            Self::ContextEngine => "context.engine",
             Self::Calendar => "planner.calendar",
             Self::Reminders => "planner.reminders",
-            Self::Metadata => "planner.metadata",
         }
     }
 }

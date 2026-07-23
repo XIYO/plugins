@@ -30,7 +30,7 @@
 | **그룹(폴더) 생성/삭제** | ❌ | ❌ | ❌ | **✅** |
 | 비-iCloud 계정(Outlook) | ✅ | ✅ | – | ❌ iCloud만 |
 
-→ **RemCTL = iCloud 기반 조직 기능과 대량 정리의 우선 선택.** 비-iCloud 계정은 AppleScript를 사용한다. 상세·설치·제약은 `remctl.md`.
+→ **Sherpa Reminders 어댑터 = iCloud 기반 조직 기능과 대량 정리의 우선 선택.** 비-iCloud 계정은 AppleScript를 사용한다. 상세·설치·제약은 `reminders.md`.
 
 ## 근거와 확인 방법
 
@@ -71,7 +71,7 @@ every group        → "Expected class name" (group 클래스 없음)
 - **하위작업 순서** — 한 edit에 `--subtask` 여러 개 = 스크램블. 순차호출=순서보존. 앱은 최신을 위에 표시(역순 추가로 오름차순 표시).
 - **부모(하위작업 有) 이동** — `--list`+`--section` 한 방 불가. 이동(clone-delete→새 id) 후 새 id에 섹션.
 - **완료 항목도 이동·섹션배정 시 완료상태 보존.**
-설치·명령·워크플로 → `remctl.md`.
+설치·명령·워크플로 → `reminders.md`.
 
 ### 원본 DB — 직접 쓰지 않는다
 저장소: `~/Library/Group Containers/group.com.apple.reminders/Container_v1/Stores/` 에 `Data-local.sqlite` + `Data-<UUID>.sqlite`(계정/CloudKit 존별) 여러 개 = **NSPersistentCloudKitContainer**.

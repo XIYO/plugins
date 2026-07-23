@@ -89,17 +89,12 @@ codex plugin add sherpa@xiyo
 codex plugin remove sherpa@xiyo
 ```
 
-## 호환 플러그인
-
-기존 설치를 위해 `apple-calendar@xiyo`와 `message-pipeline@xiyo`를 한시적으로 유지합니다. 신규 사용자는 `sherpa@xiyo`만 설치합니다.
-
 ## 저장소 구조
 
 - `.agents/plugins/marketplace.json`: Codex 마켓플레이스 카탈로그
 - `.claude-plugin/marketplace.json`: Claude Code 마켓플레이스 카탈로그
-- `plugins/sherpa/`: 정식 자기완결형 제품
-- `plugins/apple-calendar/`, `plugins/message-pipeline/`: 한시적 호환 패키지
-- `catalog-policy.json`: 정식·호환 패키지 정책
+- `plugins/sherpa/`: 유일한 자기완결형 제품이자 정본
+- `catalog-policy.json`: 공개 제품 정책
 - `scripts/`: 카탈로그·버전·저장소 검사
 
 ## 기여와 지원

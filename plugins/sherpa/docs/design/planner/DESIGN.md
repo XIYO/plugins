@@ -32,7 +32,7 @@ The names after `planner` identify adapter capabilities, not separate product do
 
 - EventKit adapter: Calendar permissions and Event/calendar CRUD
 - metadata engine: pure Event-note parsing, rendering, and validation
-- RemCTL adapter: Reminders reads, standard writes, and explicit organization features
+- Reminders adapter: Reminders reads, standard writes, and explicit organization features
 
 Adapter output is validated and read back after mutation. Platform-specific IDs stay at the adapter boundary.
 

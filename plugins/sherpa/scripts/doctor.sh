@@ -7,10 +7,8 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 INSTALL_ROOT="${SHERPA_INSTALL_ROOT:-$HOME/.local}"
 COMPONENT="${1:-all}"
 FAILURES=0
-CALMETA_VERSION="0.1.0"
-CALCTL_VERSION="0.1.2"
-MSGPIPE_VERSION="0.2.1"
-REMCTL_VERSION="1.5.1"
+CALENDAR_ADAPTER_VERSION="0.1.2"
+REMINDERS_ADAPTER_VERSION="1.5.1"
 SHERPA_VERSION="0.1.0"
 REMCTL_COMMIT="eb75c451eab006218204bb78379917f3414fc6e3"
 REMCTL_SOURCE="https://github.com/viticci/remctl.git"
@@ -58,28 +56,27 @@ record_failure() {
 }
 
 doctor_calendar() {
-  local calctl=""
-  local calmeta=""
-  calctl="$(resolve_command calctl)"
-  calmeta="$(resolve_command calmeta)"
-  echo "[doctor:calendar:start] Checking Calendar runtimes and permission" >&2
-  if [ ! -x "$calctl" ] || [ ! -x "$calmeta" ]; then
-    echo "[doctor:calendar:error] calctl or calmeta is missing; run install-runtime.sh calendar" >&2
+  local calendar_adapter=""
+  local sherpa=""
+  calendar_adapter="$(resolve_command sherpa-calendar-adapter)"
+  sherpa="$(resolve_command sherpa)"
+  echo "[doctor:calendar:start] Checking the Planner Calendar adapter" >&2
+  if [ ! -x "$calendar_adapter" ]; then
+    echo "[doctor:calendar:error] Calendar adapter is missing; run install-runtime.sh planner" >&2
     record_failure
     return
   fi
-  if ! verify_version "$calctl" "$CALCTL_VERSION" "calendar" \
-    || ! verify_version "$calmeta" "$CALMETA_VERSION" "calendar"; then
+  if ! verify_version "$calendar_adapter" "$CALENDAR_ADAPTER_VERSION" "calendar"; then
     record_failure
     return
   fi
-  if ! "$calctl" doctor; then
-    echo "[doctor:calendar:error] calctl reported an access problem" >&2
+  if ! SHERPA_INSTALL_ROOT="$INSTALL_ROOT" "$sherpa" planner calendar doctor; then
+    echo "[doctor:calendar:error] Calendar adapter reported an access problem" >&2
     record_failure
     return
   fi
-  if ! "$calmeta" spec >/dev/null; then
-    echo "[doctor:calendar:error] calmeta schema check failed" >&2
+  if ! "$sherpa" planner metadata spec >/dev/null; then
+    echo "[doctor:calendar:error] Planner metadata schema check failed" >&2
     record_failure
     return
   fi
@@ -87,20 +84,20 @@ doctor_calendar() {
 }
 
 doctor_reminders() {
-  local remctl=""
-  remctl="$(resolve_command remctl)"
+  local reminders_adapter=""
+  reminders_adapter="$(resolve_command sherpa-reminders-adapter)"
   echo "[doctor:reminders:start] Checking Reminders runtime and permission" >&2
-  if [ ! -x "$remctl" ]; then
-    echo "[doctor:reminders:error] remctl is missing; run install-runtime.sh reminders" >&2
+  if [ ! -x "$reminders_adapter" ]; then
+    echo "[doctor:reminders:error] Reminders adapter is missing; run install-runtime.sh planner" >&2
     record_failure
     return
   fi
-  if ! verify_version "$remctl" "$REMCTL_VERSION" "reminders"; then
+  if ! verify_version "$reminders_adapter" "$REMINDERS_ADAPTER_VERSION" "reminders"; then
     record_failure
     return
   fi
-  if [ "$remctl" = "$INSTALL_ROOT/bin/remctl" ]; then
-    local provenance_file="$INSTALL_ROOT/share/sherpa/remctl.provenance"
+  if [ "$reminders_adapter" = "$INSTALL_ROOT/bin/sherpa-reminders-adapter" ]; then
+    local provenance_file="$INSTALL_ROOT/share/sherpa/reminders-adapter.provenance"
     local required_file=""
     for required_file in \
       "$INSTALL_ROOT/bin/remctl-bridge" \
@@ -112,32 +109,35 @@ doctor_reminders() {
       "$INSTALL_ROOT/bin/remctl_smart_lists.py" \
       "$INSTALL_ROOT/share/licenses/sherpa/remctl/LICENSE"; do
       if [ ! -f "$required_file" ]; then
-        echo "[doctor:reminders:error] Managed RemCTL installation is incomplete; run install-runtime.sh reminders" >&2
+        echo "[doctor:reminders:error] Managed Reminders adapter is incomplete; run install-runtime.sh planner" >&2
         record_failure
         return
       fi
     done
     if [ ! -f "$provenance_file" ] \
-      || ! grep -Fxq "version=$REMCTL_VERSION" "$provenance_file" \
+      || ! grep -Fxq "version=$REMINDERS_ADAPTER_VERSION" "$provenance_file" \
       || ! grep -Fxq "commit=$REMCTL_COMMIT" "$provenance_file" \
       || ! grep -Fxq "source=$REMCTL_SOURCE" "$provenance_file"; then
-      echo "[doctor:reminders:error] Managed RemCTL provenance is missing or differs; run install-runtime.sh reminders" >&2
+      echo "[doctor:reminders:error] Managed Reminders adapter provenance differs; run install-runtime.sh planner" >&2
       record_failure
       return
     fi
     if ! cmp -s \
       "$INSTALL_ROOT/share/licenses/sherpa/remctl/LICENSE" \
       "$PLUGIN_ROOT/third_party/remctl/LICENSE"; then
-      echo "[doctor:reminders:error] Managed RemCTL license notice differs; run install-runtime.sh reminders" >&2
+      echo "[doctor:reminders:error] Managed Reminders adapter license differs; run install-runtime.sh planner" >&2
       record_failure
       return
     fi
-  else
-    echo "[doctor:reminders:warn] Using an external RemCTL binary; source provenance is not managed by Sherpa" >&2
   fi
   local doctor_json=""
   local doctor_exit=0
-  if doctor_json="$("$remctl" doctor --for-agent --json 2>/dev/null)"; then
+  local sherpa=""
+  sherpa="$(resolve_command sherpa)"
+  if doctor_json="$(
+    SHERPA_INSTALL_ROOT="$INSTALL_ROOT" \
+      "$sherpa" planner reminders doctor --for-agent --json 2>/dev/null
+  )"; then
     doctor_exit=0
   else
     doctor_exit=$?
@@ -170,21 +170,10 @@ print(f"{int(report.get('"'"'failures'"'"', 0))} {int(report.get('"'"'warnings'"
 
 doctor_context() {
   local sherpa=""
-  local msgpipe=""
   sherpa="$(resolve_command sherpa)"
-  msgpipe="$(resolve_command msgpipe)"
   echo "[doctor:context:start] Checking the context runtime and optional sources" >&2
   if [ ! -x "$sherpa" ] || ! verify_version "$sherpa" "$SHERPA_VERSION" "context"; then
     echo "[doctor:context:error] sherpa is missing or incompatible; run install-runtime.sh context" >&2
-    record_failure
-    return
-  fi
-  if [ ! -x "$msgpipe" ]; then
-    echo "[doctor:context:error] context engine is missing; run install-runtime.sh context" >&2
-    record_failure
-    return
-  fi
-  if ! verify_version "$msgpipe" "$MSGPIPE_VERSION" "context"; then
     record_failure
     return
   fi
@@ -192,7 +181,7 @@ doctor_context() {
     && ! fdesetup status 2>/dev/null | grep -q 'FileVault is On'; then
     echo "[doctor:context:storage:warn] FileVault is not confirmed; collected context has weaker protection at rest" >&2
   fi
-  if "$msgpipe" doctor kakao; then
+  if "$sherpa" context doctor kakao; then
     echo "[doctor:context:kakaotalk:warn] KakaoTalk source detected; authentication and database access are not verified" >&2
     local kakaocli=""
     kakaocli="$(resolve_command kakaocli)"
@@ -204,7 +193,7 @@ doctor_context() {
   else
     echo "[doctor:context:kakaotalk:warn] KakaoTalk source is not configured" >&2
   fi
-  if "$msgpipe" doctor imessage; then
+  if "$sherpa" context doctor imessage; then
     echo "[doctor:context:imessage:warn] iMessage source detected; Full Disk Access and database reads are not verified" >&2
   else
     echo "[doctor:context:imessage:warn] iMessage source is not configured" >&2
@@ -233,10 +222,6 @@ case "$COMPONENT" in
     ;;
   context) doctor_context ;;
   planner) doctor_planner ;;
-  # Compatibility aliases for installations created before the domain migration.
-  calendar) doctor_calendar ;;
-  reminders) doctor_reminders ;;
-  messages) doctor_context ;;
   all)
     doctor_context
     doctor_planner

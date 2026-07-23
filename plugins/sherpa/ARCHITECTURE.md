@@ -35,7 +35,7 @@ CLI and skills
 
 - Domain code owns entities, invariants, and approval rules. It does not execute platform commands.
 - Application services coordinate use cases through traits.
-- Adapters implement traits for local storage, KakaoTalk, EventKit, RemCTL, and compatibility engines.
+- Adapters implement traits for local storage, KakaoTalk, EventKit, and Reminders.
 - Skills own routing and user-confirmation policy. They do not reimplement parsers or domain validation.
 
 The Rust reply flow demonstrates the boundary directly:
@@ -59,7 +59,7 @@ sherpa context ...
 sherpa planner ...
 ```
 
-The previous `msgpipe`, `calmeta`, `calctl`, and `remctl` executables remain internal compatibility or platform adapters during the migration window. New skills and user documentation do not instruct consumers to call them directly.
+Context collection and Planner metadata execute as Rust libraries inside the `sherpa` process. Only the macOS Calendar and Reminders platform boundaries remain separate executables, named `sherpa-calendar-adapter` and `sherpa-reminders-adapter`.
 
 ## Context
 
@@ -81,12 +81,10 @@ Planner owns commitments.
 
 Apple Calendar stores Events. Apple Reminders stores Tasks. Platform object IDs never become the domain classification.
 
-## State and compatibility
+## State
 
-New Context state uses Sherpa's application directory. If no canonical state exists but the previous context-engine database does, the runtime opens that database in place so existing analysis history is preserved. New reply approvals use `sherpa/context/replies`, store no message body, expire quickly, and are single-use.
-
-Compatibility plugin sources remain frozen until the review date in `catalog-policy.json`. New domain behavior is implemented only in Sherpa.
+Context state uses Sherpa's application directory exclusively. Reply approvals use `sherpa/context/replies`, store no message body, expire quickly, and are single-use.
 
 ## Versioning
 
-The Sherpa plugin and unified Rust CLI use independent SemVer declarations that currently share the same base version. Platform and compatibility adapters retain their own pinned versions in `runtime-versions.json`. Data contracts use their own versions.
+The Sherpa plugin and Rust application use independent SemVer declarations that currently share the same base version. Domain libraries and platform adapters retain their own pinned versions in `runtime-versions.json`. Data contracts use their own versions.

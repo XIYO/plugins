@@ -12,7 +12,7 @@ date: 2026-07-22
 
 ## 결정
 
-최적화 전 `NormalizedMessage`를 msgpipe의 소유자 전용 SQLite에 저장한다. 동일 메시지는 `(source, source_message_id)`로 upsert하고, 내용이나 구조 메타데이터가 바뀌면 기존 분석 연결을 제거한다.
+최적화 전 `NormalizedMessage`를 Context 도메인의 소유자 전용 SQLite에 저장한다. 동일 메시지는 `(source, source_message_id)`로 upsert하고, 내용이나 구조 메타데이터가 바뀌면 기존 분석 연결을 제거한다.
 
 각 아카이브 행은 마지막 수집·CCT 제시·분석 시점과 `analysis_context_id`를 가진다. `pending`은 요약에 연결되지 않은 행만 준비한다. `context put session`은 실제로 제시된 pending 행 집합의 해시와 세션 요약을 append-only로 저장하고, 같은 트랜잭션에서 해당 행을 분석 완료로 연결한다.
 

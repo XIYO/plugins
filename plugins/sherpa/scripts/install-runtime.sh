@@ -11,9 +11,8 @@ COMPONENT="${1:-all}"
 REMCTL_TAG="v1.5.1"
 REMCTL_COMMIT="eb75c451eab006218204bb78379917f3414fc6e3"
 REMCTL_SOURCE="https://github.com/viticci/remctl.git"
-CALMETA_VERSION="0.1.0"
-CALCTL_VERSION="0.1.2"
-MSGPIPE_VERSION="0.2.1"
+CALENDAR_ADAPTER_VERSION="0.1.2"
+REMINDERS_ADAPTER_VERSION="1.5.1"
 SHERPA_VERSION="0.1.0"
 
 cleanup() {
@@ -59,41 +58,36 @@ require_command() {
 }
 
 install_calendar() {
-  require_command cargo
   require_command swiftc
   require_command codesign
 
-  echo "[install:calendar:start] Installing calmeta and calctl" >&2
-  CARGO_TARGET_DIR="$BUILD_ROOT/calendar-cargo" cargo install \
-    --path "$PLUGIN_ROOT/crates/calmeta" \
-    --locked \
-    --force \
-    --root "$INSTALL_ROOT"
-
-  local calctl_build_bin="$BUILD_ROOT/calctl"
+  echo "[install:calendar:start] Installing the Planner Calendar adapter" >&2
+  local calendar_build_bin="$BUILD_ROOT/sherpa-calendar-adapter"
   swiftc -parse-as-library -O \
     -framework EventKit \
     -framework CoreGraphics \
     -Xlinker -sectcreate \
     -Xlinker __TEXT \
     -Xlinker __info_plist \
-    -Xlinker "$PLUGIN_ROOT/runtime/calctl/Info.plist" \
-    "$PLUGIN_ROOT/runtime/calctl/calctl.swift" \
-    -o "$calctl_build_bin"
+    -Xlinker "$PLUGIN_ROOT/runtime/calendar-adapter/Info.plist" \
+    "$PLUGIN_ROOT/runtime/calendar-adapter/calendar-adapter.swift" \
+    -o "$calendar_build_bin"
 
   local sign_identity=""
   sign_identity="$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development:/{print $2; exit}')"
   if [ -n "$sign_identity" ]; then
-    codesign --force --sign "$sign_identity" --identifier dev.xiyo.calctl "$calctl_build_bin"
+    codesign --force --sign "$sign_identity" --identifier dev.xiyo.sherpa.calendar "$calendar_build_bin"
   else
-    codesign --force --sign - --identifier dev.xiyo.calctl "$calctl_build_bin"
+    codesign --force --sign - --identifier dev.xiyo.sherpa.calendar "$calendar_build_bin"
   fi
 
   mkdir -p "$INSTALL_ROOT/bin"
-  install -m 755 "$calctl_build_bin" "$INSTALL_ROOT/bin/calctl"
-  verify_version "$INSTALL_ROOT/bin/calmeta" "$CALMETA_VERSION" "calendar"
-  verify_version "$INSTALL_ROOT/bin/calctl" "$CALCTL_VERSION" "calendar"
-  echo "[install:calendar:success] Installed calmeta and calctl under $INSTALL_ROOT/bin" >&2
+  install -m 755 "$calendar_build_bin" "$INSTALL_ROOT/bin/sherpa-calendar-adapter"
+  verify_version \
+    "$INSTALL_ROOT/bin/sherpa-calendar-adapter" \
+    "$CALENDAR_ADAPTER_VERSION" \
+    "calendar"
+  echo "[install:calendar:success] Installed the Planner Calendar adapter" >&2
 }
 
 install_sherpa() {
@@ -115,12 +109,12 @@ install_reminders() {
   require_command swiftc
   require_command clang
 
-  local installed_remctl="$INSTALL_ROOT/bin/remctl"
-  local provenance_file="$INSTALL_ROOT/share/sherpa/remctl.provenance"
+  local reminders_adapter="$INSTALL_ROOT/bin/sherpa-reminders-adapter"
+  local provenance_file="$INSTALL_ROOT/share/sherpa/reminders-adapter.provenance"
   local required_file=""
   local verified_install=true
   for required_file in \
-    "$installed_remctl" \
+    "$reminders_adapter" \
     "$INSTALL_ROOT/bin/remctl-bridge" \
     "$INSTALL_ROOT/bin/remctl-permissions" \
     "$INSTALL_ROOT/bin/remctl-private" \
@@ -146,8 +140,8 @@ install_reminders() {
     verified_install=false
   fi
   if [ "$verified_install" = true ] \
-    && verify_version "$installed_remctl" "${REMCTL_TAG#v}" "reminders" >/dev/null 2>&1; then
-    echo "[install:reminders:success] Verified RemCTL ${REMCTL_TAG#v} installation is already present" >&2
+    && verify_version "$reminders_adapter" "$REMINDERS_ADAPTER_VERSION" "reminders" >/dev/null 2>&1; then
+    echo "[install:reminders:success] Verified the Planner Reminders adapter" >&2
     return 0
   fi
 
@@ -188,7 +182,7 @@ install_reminders() {
   done
 
   mkdir -p "$INSTALL_ROOT/bin"
-  install -m 755 "$stage_bin/remctl" "$INSTALL_ROOT/bin/remctl"
+  install -m 755 "$stage_bin/remctl" "$reminders_adapter"
   install -m 755 "$stage_bin/remctl-bridge" "$INSTALL_ROOT/bin/remctl-bridge"
   install -m 755 "$stage_bin/remctl-permissions" "$INSTALL_ROOT/bin/remctl-permissions"
   install -m 755 "$stage_bin/remctl-private" "$INSTALL_ROOT/bin/remctl-private"
@@ -200,7 +194,7 @@ install_reminders() {
     install -m 644 "$stage_bin/remctl-permissions-icon.png" "$INSTALL_ROOT/bin/remctl-permissions-icon.png"
   fi
 
-  local provenance_source="$BUILD_ROOT/remctl.provenance"
+  local provenance_source="$BUILD_ROOT/reminders-adapter.provenance"
   printf 'version=%s\ncommit=%s\nsource=%s\n' \
     "${REMCTL_TAG#v}" "$REMCTL_COMMIT" "$REMCTL_SOURCE" > "$provenance_source"
   install -d -m 700 "$INSTALL_ROOT/share/sherpa"
@@ -208,23 +202,11 @@ install_reminders() {
   install -d -m 755 "$INSTALL_ROOT/share/licenses/sherpa/remctl"
   install -m 644 "$source_dir/LICENSE" "$INSTALL_ROOT/share/licenses/sherpa/remctl/LICENSE"
 
-  verify_version "$installed_remctl" "${REMCTL_TAG#v}" "reminders"
-  echo "[install:reminders:success] Installed verified RemCTL components without upstream aliases" >&2
-  echo "[install:reminders:notice] No rctl/reminders aliases or shell configuration were installed" >&2
+  verify_version "$reminders_adapter" "$REMINDERS_ADAPTER_VERSION" "reminders"
+  echo "[install:reminders:success] Installed the verified Planner Reminders adapter" >&2
 }
 
-install_context_engine() {
-  require_command cargo
-
-  echo "[install:context:start] Installing the context engine" >&2
-  CARGO_TARGET_DIR="$BUILD_ROOT/context-cargo" cargo install \
-    --path "$PLUGIN_ROOT/crates/msgpipe" \
-    --locked \
-    --force \
-    --root "$INSTALL_ROOT"
-  verify_version "$INSTALL_ROOT/bin/msgpipe" "$MSGPIPE_VERSION" "context"
-  echo "[install:context:success] Installed the internal context engine" >&2
-
+check_context_sources() {
   if ! command -v kakaocli >/dev/null 2>&1; then
     echo "[install:context:source:warn] kakaocli is optional and was not installed" >&2
   fi
@@ -251,7 +233,7 @@ fi
 case "$COMPONENT" in
   context)
     install_sherpa
-    install_context_engine
+    check_context_sources
     ;;
   planner)
     install_sherpa
@@ -259,21 +241,8 @@ case "$COMPONENT" in
     ;;
   all)
     install_sherpa
-    install_context_engine
+    check_context_sources
     install_planner
-    ;;
-  # Compatibility aliases for installations created before the domain migration.
-  calendar)
-    install_sherpa
-    install_calendar
-    ;;
-  reminders)
-    install_sherpa
-    install_reminders
-    ;;
-  messages)
-    install_sherpa
-    install_context_engine
     ;;
   *)
     usage
