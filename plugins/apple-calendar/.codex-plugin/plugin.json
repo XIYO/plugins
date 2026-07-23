@@ -1,0 +1,38 @@
+{
+  "name": "apple-calendar",
+  "version": "0.1.0+codex.20260723001449",
+  "description": "Manage Apple Calendar through EventKit without UI automation and validate structured event notes.",
+  "author": {
+    "name": "XIYO",
+    "email": "bunny@xiyo.dev",
+    "url": "https://github.com/XIYO"
+  },
+  "homepage": "https://github.com/XIYO/plugins/tree/main/plugins/apple-calendar",
+  "repository": "https://github.com/XIYO/plugins",
+  "license": "MIT",
+  "keywords": [
+    "apple-calendar",
+    "eventkit",
+    "calendar",
+    "metadata"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Apple Calendar",
+    "shortDescription": "EventKit \uc77c\uc815 \uad00\ub9ac\uc640 \ubc84\uc804\ud615 \uba54\ubaa8 \uac80\uc99d",
+    "longDescription": "\ud654\uba74 \uc870\uc791 \uc5c6\uc774 macOS EventKit\uc73c\ub85c Apple Calendar\ub97c \uad00\ub9ac\ud558\uace0, \uc77c\uc815 \uba54\ubaa8\ub97c \uba85\uc2dc\uc801\uc778 MAJOR.MINOR \uc2a4\ud0a4\ub9c8\ub85c \uc0dd\uc131\u00b7\uac80\uc99d\ud569\ub2c8\ub2e4.",
+    "developerName": "XIYO",
+    "category": "Productivity",
+    "websiteURL": "https://github.com/XIYO/plugins/tree/main/plugins/apple-calendar",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Validate"
+    ],
+    "defaultPrompt": [
+      "\ub0b4 Apple Calendar \uc77c\uc815\uc744 \uc870\ud68c\ud558\uace0 \uc815\ub9ac\ud574\uc918.",
+      "\ud1b5\uc2e0\u00b7\uae08\uc735 \ubc18\ubcf5 \uc77c\uc815\uc744 \uc77c\uad00\ub41c \uba54\ud0c0\ub370\uc774\ud130\ub85c \ub4f1\ub85d\ud574\uc918.",
+      "\uae30\uc874 \uc77c\uc815 \uba54\ubaa8\uac00 \uce98\ub9b0\ub354 \uc2a4\ud0a4\ub9c8\uc5d0 \ub9de\ub294\uc9c0 \uac80\uc0ac\ud574\uc918."
+    ]
+  }
+}

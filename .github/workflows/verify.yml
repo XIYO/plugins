@@ -1,0 +1,30 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  repository:
+    name: Marketplace, runtimes, and documentation
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run repository checks
+        run: bash scripts/check-all.sh
+
+      - name: Lint consumer documentation
+        run: >-
+          npx --yes markdownlint-cli2@0.23.1
+          "README*.md"
+          "plugins/*/{README,CHANGELOG}.md"
+          "CLAUDE.md"

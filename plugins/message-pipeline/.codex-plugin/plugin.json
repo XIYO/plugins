@@ -1,12 +1,14 @@
 {
   "name": "message-pipeline",
-  "version": "0.2.0+codex.20260722085528",
-  "description": "Read-only KakaoTalk and iMessage sync, protected local raw archive, incremental CCT export, and recoverable summary rollups.",
+  "version": "0.2.0+codex.20260723001449",
+  "description": "Sync KakaoTalk and iMessage read-only, archive locally, and analyze only unprocessed messages.",
   "author": {
     "name": "XIYO",
     "email": "bunny@xiyo.dev",
     "url": "https://github.com/XIYO"
   },
+  "homepage": "https://github.com/XIYO/plugins/tree/main/plugins/message-pipeline",
+  "repository": "https://github.com/XIYO/plugins",
   "license": "MIT",
   "keywords": [
     "kakaotalk",
@@ -22,6 +24,7 @@
     "longDescription": "\ub85c\uceec KakaoTalk\uacfc iMessage \uc6d0\ubb38\uc744 \uc18c\uc720\uc790 \uc804\uc6a9 SQLite\uc5d0 \uba71\ub4f1 \ubcf4\uad00\ud558\uace0, \ubbf8\ubd84\uc11d \uba54\uc2dc\uc9c0\ub9cc \uc2a4\ub808\ub4dc\u00b7\uc138\uc158\ubcc4 CCT\ub85c \ub0b4\ubcf4\ub0b8 \ub4a4 \uc694\uc57d\uacfc \ubd84\uc11d \uc2dc\uc810\uc744 \ub204\uc801\ud569\ub2c8\ub2e4.",
     "developerName": "XIYO",
     "category": "Productivity",
+    "websiteURL": "https://github.com/XIYO/plugins/tree/main/plugins/message-pipeline",
     "capabilities": [
       "Read",
       "Analyze"

@@ -2,6 +2,52 @@
 
 `msgpipe`는 macOS에 동기화된 KakaoTalk와 iMessage 기록을 읽기 전용으로 가져와 소유자 전용 로컬 SQLite에 원문을 보관하고, 아직 요약되지 않은 메시지만 토큰 절약형 CCT로 준비하는 Rust CLI다.
 
+> **단계:** Experimental · **플랫폼:** macOS · **원본 접근:** 읽기 전용
+
+## 설치
+
+[XIYO 플러그인 마켓플레이스](../../README.ko.md)를 추가하고 `message-pipeline@xiyo`를 설치한다.
+
+```bash
+codex plugin marketplace add XIYO/plugins
+codex plugin add message-pipeline@xiyo
+```
+
+설치한 스킬을 불러오려면 새 Codex 작업을 시작한다. 첫 사용 시 `msgpipe`가 없으면 번들 스킬이 플러그인 내부 설치기를 실행할 수 있다.
+
+## 선행 조건
+
+- macOS와 Rust 도구 모음
+- KakaoTalk용 읽기 전용 `kakaocli` 또는 iMessage용 읽기 전용 `imsg`
+- 소스 리더가 요구하는 macOS 전체 디스크 접근 권한
+- `~/.cargo/bin`을 포함한 `PATH`
+
+소스 리더는 자동 설치하지 않는다. 현재 KakaoTalk·iMessage 연동에는 별도 준비 과정이 있으므로 이 플러그인은 Experimental이다.
+
+## 첫 사용
+
+원문을 내보내기 전에 읽기 전용 진단부터 실행한다.
+
+```text
+iMessage와 KakaoTalk 소스 리더 설치 상태만 확인해줘. 메시지 내용은 출력하거나 분석하지 마.
+```
+
+수동 확인:
+
+```bash
+msgpipe doctor imessage
+msgpipe doctor kakao
+```
+
+동기화는 원문을 표준 출력에 표시하지 않는다. 분석을 명시적으로 요청한 경우에만 미분석 메시지를 CCT로 준비해 모델 컨텍스트에 넣는다.
+
+## 데이터 경계
+
+- KakaoTalk와 Messages 원본 DB는 수정하지 않는다.
+- 동기화한 원문은 소유자 전용 로컬 SQLite에 저장하며, 파일 자체는 애플리케이션 수준에서 암호화하지 않는다. FileVault가 켜진 소유자 기기에서만 사용한다.
+- 런타임은 데이터를 스스로 업로드하지 않지만, 분석하도록 선택한 CCT 본문은 Codex 또는 Claude Code에 설정된 모델 제공자가 처리할 수 있다.
+- 로그와 버그 제보에는 메시지 본문, 이름, 연락처, 원본 식별자, 인증 재료, 로컬 DB 경로를 포함하지 않는다.
+
 ## 상태
 
 v0.2는 읽기 전용 소스 어댑터, 원문 아카이브, 멱등 동기화, 공통 옵티마이저, CCT, 토큰 벤치마크와 증분 분석 상태를 구현한다.
@@ -69,3 +115,5 @@ msgpipe identities K001
 **요구사항/설계** — [Pipeline Requirements](docs/requirements/pipeline/README.md) · [DESIGN-PIPE](docs/design/pipeline/DESIGN.md) · [CTX](contracts/context/CTX.md)
 
 **결정** — [ADR-0001](docs/adr/0001-rust-core-cli-adapters.md) · [ADR-0002](docs/adr/0002-cct-session-format.md) · [ADR-0003](docs/adr/0003-source-normalization-common-optimization.md) · [ADR-0004](docs/adr/0004-local-raw-archive-incremental-analysis.md)
+
+**릴리스** — [CHANGELOG](CHANGELOG.md)

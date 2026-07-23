@@ -1,11 +1,13 @@
 {
   "name": "message-pipeline",
   "version": "0.2.0",
-  "description": "KakaoTalk·iMessage 읽기 전용 동기화, 로컬 원문 보관, 증분 CCT와 누적 요약",
+  "description": "Sync KakaoTalk and iMessage read-only, archive locally, and analyze only unprocessed messages",
   "author": {
     "name": "XIYO",
     "email": "bunny@xiyo.dev"
   },
+  "homepage": "https://github.com/XIYO/plugins/tree/main/plugins/message-pipeline",
+  "repository": "https://github.com/XIYO/plugins",
   "license": "MIT",
   "keywords": ["kakaotalk", "imessage", "messages", "cct", "token-optimization"]
 }

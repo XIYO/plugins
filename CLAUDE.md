@@ -1,47 +1,67 @@
-# CLAUDE.md
+# Repository guide
 
-이 저장소는 Codex와 Claude Code가 설치할 수 있는 XIYO 공개 플러그인 marketplace다. 실제 플러그인과 Rust 앱은 `plugins/message-pipeline/` 안에 함께 둔다. 플러그인 설치기는 디렉터리를 캐시로 복사하므로 저장소 밖 파일이나 절대 경로에 의존하지 않는다.
+이 저장소는 Codex와 Claude Code가 설치할 수 있는 XIYO 공개 플러그인 marketplace다. 실제 플러그인과 런타임은 각 `plugins/<name>/` 안에 함께 둔다. 플러그인 설치기는 디렉터리를 캐시로 복사하므로 저장소 밖 파일이나 절대 경로에 의존하지 않는다.
 
-## 구조
+`CLAUDE.md`가 정본이며 `AGENTS.md`는 이 파일을 가리키는 심볼릭 링크다. 두 파일을 따로 복제해 관리하지 않는다.
 
-```text
-.agents/plugins/marketplace.json             Codex marketplace
-.claude-plugin/marketplace.json              Claude Code marketplace
-plugins/message-pipeline/
-├── .codex-plugin/plugin.json
-├── .claude-plugin/plugin.json
-├── skills/message-pipeline/                 단일 번들 스킬
-│   └── references/                          KakaoTalk·iMessage 소스 문서
-├── scripts/install-runtime.sh
-└── Cargo.toml                               msgpipe Rust 앱
-```
+## 정본과 구조
 
-## 불변 규칙
+- `.agents/plugins/marketplace.json`: Codex 카탈로그 정본
+- `.claude-plugin/marketplace.json`: Claude Code 카탈로그 정본
+- `plugins/<name>/.codex-plugin/plugin.json`: Codex 플러그인 매니페스트
+- `plugins/<name>/.claude-plugin/plugin.json`: Claude Code 플러그인 매니페스트
+- `plugins/<name>/skills/<name>/SKILL.md`: 에이전트 실행 규칙
+- `plugins/<name>/scripts/install-runtime.sh`: 캐시 내부에서도 동작하는 런타임 설치기
+- `scripts/check-all.sh`: 공개 전 저장소 전체 품질 게이트
 
-- 소스 데이터는 읽기 전용으로 다룬다. KakaoTalk는 검증된 `kakaocli query`, iMessage는 `imsg chats/history`만 허용한다.
-- 메시지 전송, 읽음 처리, 감시, UI 자동화, 첨부 변환 명령을 코드 경로에 추가하지 않는다.
+플러그인마다 런타임 언어와 세부 디렉터리는 달라도 되지만, 설치본은 항상 자기완결형이어야 한다. 개인 `x-*` 스킬, 저장소 밖 상대경로, 작성자 컴퓨터의 절대경로에 의존하지 않는다.
+
+## 소비자 문서
+
+- 루트 `README.md`는 영어 진입점, `README.ko.md`는 한국어 진입점이다. 설치 ID, 단계, 플랫폼, 권한, 선행 조건, 첫 사용, 검증, 데이터 경계를 같은 변경에서 갱신한다.
+- 공개 설치 명령은 GitHub 원격 `XIYO/plugins`를 사용한다. `$PWD` 예시는 로컬 개발 절에만 둔다.
+- 각 플러그인 README는 결과 중심 설명 → 설치 → 선행 조건 → 첫 사용 → 검증 → 데이터 경계 → 제한 사항 → 개발 순서로 쓴다.
+- 구현 용어는 사용자가 얻는 결과를 먼저 설명한 뒤 소개한다.
+- 스킬 폴더에는 에이전트 실행에 필요한 지식만 둔다. 사용자용 설치 문서나 변경 이력을 `SKILL.md`에 넣지 않는다.
+
+## 데이터 불변 규칙
+
+- KakaoTalk와 iMessage 소스 데이터는 읽기 전용으로 다룬다. 메시지 전송, 읽음 처리, 감시, UI 자동화, 첨부 변환 명령을 코드 경로에 추가하지 않는다.
 - 원문 채팅은 msgpipe의 소유자 전용 로컬 SQLite에만 저장한다. 동일 원본 메시지는 멱등 upsert하고, 수정된 메시지는 기존 분석 연결을 끊어 다시 pending으로 만든다.
-- 상태 DB에는 마지막 수집·CCT 제시·분석 시점, 메시지를 덮는 세션 요약, 스레드·전역 누적 rollup을 함께 저장한다. 분석 완료와 세션 요약, 상위 rollup과 입력 watermark 연결은 각각 같은 트랜잭션에서만 처리한다.
-- 기본 모델 출력은 스레드와 화자를 별칭으로 치환한다. 실명 매핑은 소유자 전용 로컬 SQLite에만 둔다.
-- 로그나 Git 저장소에는 메시지 본문, 이름, 전화번호, 이메일, 원본 식별자, 키, 상태 DB를 남기지 않는다. 원문은 런타임의 로컬 SQLite에만 둔다.
-- plugin manifest와 Cargo package의 기본 semver를 함께 갱신한다. Codex 로컬 재설치용 `+codex.<cachebuster>` suffix만 예외다.
+- 분석 완료와 세션 요약, 상위 rollup과 입력 watermark 연결은 각각 같은 트랜잭션에서 처리한다.
+- 모델 입력은 스레드와 화자를 별칭으로 치환한다. 실명 매핑은 소유자 전용 로컬 SQLite에만 둔다.
+- 로그, 테스트 fixture, 이슈, Git 저장소에는 메시지 본문, 일정 메모, 이름, 전화번호, 이메일, 원본 식별자, 키, 상태 DB, 로컬 절대경로를 남기지 않는다.
 
-## 로깅
+## 버전과 릴리스
+
+- Rust 앱이 있는 플러그인은 plugin manifest와 Cargo package의 기본 SemVer를 함께 갱신한다.
+- Codex 로컬 재설치용 `+codex.<cachebuster>`는 기본 버전을 바꾸지 않는다.
+- 사용자에게 보이는 변경은 플러그인별 `CHANGELOG.md`의 `Unreleased`에 기록한다.
+- 공개 태그는 `<plugin-name>-v<version>` 형식을 사용한다.
+- 일정 메모 같은 데이터 계약은 앱 버전과 분리한다. 호환성 규칙이 PATCH를 해석하지 않으면 `MAJOR.MINOR`만 저장한다.
+
+## 로깅과 오류
 
 - 접두사는 `[layer:module:action]` 형식을 쓴다.
-- 외부 명령과 DB 경계에서 시작·성공·실패를 기록한다.
+- 외부 명령, 데이터베이스, Calendar 권한 같은 경계에서 시작·성공·실패를 기록한다.
 - 기본 레벨은 `warn`; `LOG_LEVEL`로 조절한다.
-- 실패를 잡았다면 원본 오류를 보존해 상위로 전달한다.
+- 실패를 잡았다면 원본 오류를 보존해 상위로 전달하거나 의미 있는 복구를 수행한다. 빈 catch나 오류 삼키기를 금지한다.
+- 로그에 개인 원문이나 인증 정보를 넣지 않는다.
 
 ## 품질 게이트
 
-Rust 명령은 `plugins/message-pipeline/`에서 실행한다.
+저장소 루트에서 다음을 실행한다.
 
 ```bash
-bash scripts/check.sh
-python3 ~/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/message-pipeline
-python3 ~/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .
-claude plugin validate ../..
+bash scripts/check-all.sh
 ```
 
-`scripts/check.sh`는 임시 `CARGO_TARGET_DIR`를 사용하고 종료 시 제거한다. 플러그인 디렉터리 안에 `target/`을 만든 채로 설치하면 marketplace 캐시에 빌드 산출물까지 복사되므로 금지한다. 실데이터 회귀 검증은 집계 수치와 해시만 출력하며 채팅 본문은 터미널에도 표시하지 않는다.
+릴리스 전에는 추가로 각 스킬과 플러그인을 공식 validator로 검사한다.
+
+```bash
+python3 ~/.codex/skills/.system/skill-creator/scripts/quick_validate.py plugins/<name>/skills/<name>
+python3 ~/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/<name>
+claude plugin validate .
+```
+
+검증 스크립트는 임시 빌드 디렉터리를 사용하고 종료 시 제거한다. 플러그인 안에 `target/`을 만든 채 설치하거나 배포하지 않는다. 실데이터 회귀 검증은 집계 수치와 해시만 출력하며 원문은 터미널에도 표시하지 않는다.
